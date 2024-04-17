@@ -1,0 +1,4 @@
+[build]
+1. choose toolchain in toml file based on OS
+2. change isla-lang build file with dune configurator to build based on OS
+3. skip the opam pin on isla-lang in Makefile
