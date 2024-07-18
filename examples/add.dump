@@ -1,0 +1,5 @@
+   0:	00150513          	addi	a0,a0,1
+   4:	00150513          	addi	a0,a0,1
+   8:	00150513          	addi	a0,a0,1
+//@constraint: = ((_ extract 1 1) x1) 0b0
+   c:	00008067          	ret

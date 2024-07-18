@@ -64,6 +64,7 @@ Global Instance spec_equiv : Equiv spec := λ P1 P2, ∀ κs, P1 κs ↔ P2 κs.
 
 Canonical Structure specO := list seq_label -d> PropO.
 
+(* YIQUN: provide a kind of combinator for spec. *)
 Definition snil : spec :=
   λ κs, κs = [].
 

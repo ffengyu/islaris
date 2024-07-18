@@ -66,6 +66,64 @@ From isla Require Export opsem spec.
 Set Default Proof Using "Type".
 Import uPred.
 
+(* YIQUN: Ghost State List *)
+(* This file involves all the ghost states specific to this projection. *)
+(* The ghost states every language should have are not in the scope. For *)
+(* example, the invGS is not in this file. Other GS can be splited into two *)
+(* types: all other GS(for exmaple invGS and irisGS, in lifting file to *)
+(* construct weakestpre), GpreS(used to instantiate Gobal GS in adequacy *)
+(* file). In the tutorial files, these GS are instantiated one by one subG *)
+(* instance. In the islaris, they are instantiated together in the islaG. *)
+
+(************************************************************)
+(* All in all, what we care is that there is an instance for every GS we *)
+(* use in the final adequacy theorem. If the instance is of type A -> libG, *)
+(* we need the instance of type A. This instance of inG means that the *)
+(* GS we used is actually in the list, which is a proof. We can *)
+(* instantiate it separately like in `semantic course` or do it all *)
+(* together like in Islaris. In the proof of single lemma, we only need to *)
+(* fill `{!libG Σ} to simply assume that libG is in the functor list Σ. *)
+(************************************************************)
+
+(* Q-YIQUN: why are particularly these two ghost state defined separately? *)
+(* is it because these two are based on leibnizO? instrblUR and backed_memUR*)
+
+(* gFunctor list is a method of instantiating inG proofs. We can have no *)
+(* gFunctor list if we can instantiate the instance in another way. For *)
+(* example, the initialization lemma uses GpreS to instantiate GS. *)
+
+(* There are four important inG list: islaPreG, islaG, heapG, threadG. *)
+
+(* islaPreG: PreG used by isla_adequacy to instantiate islaG. The instance *)
+(* of PreG is provided by the conventional lemma subG_islaPreG of type *)
+(* subG islaΣ Σ -> islaPreG Σ. Here, the islaΣ is the gFunctor list of *)
+(* islaPreG. *)
+
+(* heapG: heapG is instantiated by the field of islaG. So if we can *)
+(* instantiate islaG, we naturally have the instance of heapG. Hence, we *)
+(* only need to consider how to instantiate islaG and as mentioned above, *)
+(* this instantiation is completed by adequacy theorem usign islaPreG. *)
+
+(* Q-YIQUN: what is threadG *)
+
+(* instrtblUR: from addr to trace. Does it represent the whole program? *)
+(* since one instr corresponds to a trace of events. *)
+(* Q-YIQUN backed_memUR: a set of addr, don't understand? back what? A *)
+(* Gobal GS. *)
+(* regs: from string to value *)
+(* struct_regs: from (string, string) to value *)
+(* mem: from addr to byte. A Global GS. *)
+(* spec_trace: predicate over list seq_label. *)
+(* Q-YIQUN: what's the difference between seq_label and event? *)
+(* The global ones are instr, backed_mem, and spec. *)
+(* Only reg and struct_reg are not global. Auctually, they are also *)
+(* thread-global(or thread-local?). *)
+(* and their loc are given by threadG. *)
+(* The instrtblUR and backed_memUR are agreeR and no update? Other GS are *)
+(* ghost map of pair (auth: (K, (dq, agree(K, V)),frag: (K, (dq, agree(V))) *)
+(* , which allows the update when dq is full. *)
+(* holding the full ownership of auth. *)
+
 Definition instrtblUR : cmra :=
   agreeR (gmapO addr (leibnizO isla_trace)).
 
@@ -88,6 +146,7 @@ Class heapG Σ := HeapG {
   heap_spec_trace_name : gname;
 }.
 
+(* Q-YIQUN: what is threadG *)
 Class threadG := ThreadG {
   thread_regs_name : gname;
   thread_struct_regs_name : gname;
@@ -102,6 +161,7 @@ Definition to_backed_mem : gset addr → backed_memUR :=
 Section definitions.
   Context `{!heapG Σ}.
 
+  (* YIQUN: instr_table i: own i in location heap_insts_name. *)
   Definition instr_table_def (i : gmap addr isla_trace) : iProp Σ :=
     own heap_instrs_name (to_instrtbl i).
   Definition instr_table_aux : seal (@instr_table_def). by eexists. Qed.
@@ -109,6 +169,8 @@ Section definitions.
   Definition instr_table_eq : @instr_table = @instr_table_def :=
     seal_eq instr_table_aux.
 
+  (* YIQUN: instr a i: for the instr_table(some program) we own, the addr *)
+  (* a has isla_trace i. *)
   Definition instr_def (a : Z) (i: option isla_trace) : iProp Σ :=
     ∃ instrs b, ⌜Z_to_bv_checked 64 a = Some b⌝ ∗ ⌜instrs !! b = i⌝ ∗ instr_table instrs.
   Definition instr_aux : seal (@instr_def). by eexists. Qed.
@@ -116,9 +178,12 @@ Section definitions.
   Definition instr_eq : @instr = @instr_def :=
     seal_eq instr_aux.
 
+  (* Q-YIQUN: why seal the instr_table? from regs_ctx, does it seal all? *)
   Definition instr_ctx (intrs : gmap addr isla_trace) : iProp Σ :=
     instr_table intrs.
 
+  (* YIQUN: own value v at location γ with ownership #q at entry r. *)
+  (* This is the frag ghost map. *)
   Definition reg_mapsto_def (γ : gname) (r : string) (q : frac) (v: valu) : iProp Σ :=
     r ↪[ γ ]{# q} v.
   Definition reg_mapsto_aux : seal (@reg_mapsto_def). by eexists. Qed.
@@ -126,6 +191,7 @@ Section definitions.
   Definition reg_mapsto_eq : @reg_mapsto = @reg_mapsto_def :=
     seal_eq reg_mapsto_aux.
 
+  (* YIQUN: what's a struct_reg? *)
   Definition struct_reg_mapsto_def (γ : gname) (r f : string) (q : frac) (v: valu) : iProp Σ :=
     (r, f) ↪[ γ ]{# q} v.
   Definition struct_reg_mapsto_aux : seal (@struct_reg_mapsto_def). by eexists. Qed.
@@ -133,12 +199,15 @@ Section definitions.
   Definition struct_reg_mapsto_eq : @struct_reg_mapsto = @struct_reg_mapsto_def :=
     seal_eq struct_reg_mapsto_aux.
 
+  (* Q-YIQUN: we can from the name of this def see that, all the reg are in *)
+  (* the map at loc γ1 and all the struct_reg are in the map at loc γ2. *)
   Definition gen_reg_mapsto (γ1 γ2 : gname) (r : reg_kind) (q : frac) (v: valu) : iProp Σ :=
     match r with
     | KindReg r' => reg_mapsto γ1 r' q v
     | KindField r' f' => struct_reg_mapsto γ2 r' f' q v
     end.
 
+  (* YIQUN: own this reg and this value satisfies the P. *)
   Definition reg_mapsto_pred_def (γ : gname) (r : string) (q : frac) (P: valu → iProp Σ) : iProp Σ :=
     ∃ v, reg_mapsto γ r q v ∗ P v.
   Definition reg_mapsto_pred_aux : seal (@reg_mapsto_pred_def). by eexists. Qed.
@@ -153,9 +222,17 @@ Section definitions.
   Definition struct_reg_mapsto_pred_eq : @struct_reg_mapsto_pred = @struct_reg_mapsto_pred_def :=
     seal_eq struct_reg_mapsto_pred_aux.
 
+  (* YIQUN: reg_col represents the ownship of all the regs in the list *)
+  (* regs. Regs have two types:reg and struct_reg. This list also specifies *)
+  (* the shape of value stored in the reg. *)
   Definition reg_col `{!threadG} (regs : list (reg_kind * valu_shape)) : iProp Σ :=
     [∗ list] v ∈ regs, ∃ vact, ⌜valu_has_shape vact v.2⌝ ∗ gen_reg_mapsto thread_regs_name thread_struct_regs_name v.1 1 vact.
 
+  (* YIQUN: the two map_Forall pure assertions make sure the regs is *)
+  (* sensible, which means regs contains two parts, one is regular reg, *)
+  (* and another is struct reg. The 3rd assertion says that the regs cannot *)
+  (* be full of struct reg. THe final two give use the ghost_map_auth. *)
+  (* That's the map we want. *)
   Definition regs_ctx `{!threadG} (regs : reg_map) : iProp Σ :=
     ∃ rs (srs : gmap (string * string) valu),
       ⌜map_Forall (λ r v, regs !! r = Some v) rs⌝ ∗
@@ -166,6 +243,7 @@ Section definitions.
       ghost_map_auth thread_struct_regs_name 1 srs
   .
 
+  (* YIQUN: a global agreement of gset addr *)
   Definition backed_mem_def (m : gset addr) : iProp Σ :=
     own heap_backed_mem_name (to_backed_mem m).
   Definition backed_mem_aux : seal (@backed_mem_def). by eexists. Qed.
@@ -173,6 +251,14 @@ Section definitions.
   Definition backed_mem_eq : @backed_mem = @backed_mem_def :=
     seal_eq backed_mem_aux.
 
+  (* YIQUN: the virtual mem [a, a + len] for IO is not in the global *)
+  (* backed_mem at all. Since the backed_mem has the same dom as the *)
+  (* heap_mem, from mmio_range, we make sure the mmio is not in the *)
+  (* heap_mem. *)
+  (* YIQUN: We cannot say every un-alloc region is the mmio region and we *)
+  (* use mmio to express this knowledge about mmio region. Since the *)
+  (* backed_mem is agreement map, wo can have multiple mmios and they are *)
+  (* persistent. *)
   Definition mmio_range_def (a : Z) (len : Z) : iProp Σ :=
     ∃ bm, ⌜0 ≤ len⌝ ∗ ⌜0 ≤ a ∧ a + len ≤ 2 ^ 64⌝ ∗
           ⌜set_Forall (λ a', ¬ (a ≤ bv_unsigned a' < a + len)) bm⌝ ∗ backed_mem bm.
@@ -181,6 +267,7 @@ Section definitions.
   Definition mmio_range_eq : @mmio_range = @mmio_range_def :=
     seal_eq mmio_range_aux.
 
+  (* YIQUN: entry 'a in map at loc γ points to v with' perm*)
   Definition mem_mapsto_byte_def (γ : gname) (a : Z) (q : dfrac) (v : byte) : iProp Σ :=
     ∃ a', ⌜Z_to_bv_checked 64 a = Some a'⌝ ∗ a' ↪[ γ ]{q} v.
   Definition mem_mapsto_byte_aux : seal (@mem_mapsto_byte_def). by eexists. Qed.
@@ -188,6 +275,8 @@ Section definitions.
   Definition mem_mapsto_byte_eq : @mem_mapsto_byte = @mem_mapsto_byte_def :=
     seal_eq mem_mapsto_byte_aux.
 
+  (* YIQUN: entries in heap_mem_name starting from a pointer to the start *)
+  (* of little endian encoding of w. *)
   Definition mem_mapsto_def {n} (a : Z) (q : dfrac) (w : bv n) : iProp Σ :=
     ∃ len, ⌜n = (8 * N.of_nat len)%N⌝ ∗ ⌜0 ≤ a ∧ a + len ≤ 2 ^ 64⌝ ∗
     let bytes := bv_to_little_endian len 8 (bv_unsigned w) in
@@ -197,6 +286,8 @@ Section definitions.
   Definition mem_mapsto_eq {n} : @mem_mapsto n = @mem_mapsto_def n :=
     seal_eq mem_mapsto_aux.
 
+  (* YIQUN: entries starting in heap_mem_name from a pointer to the little *)
+  (* endian encoding of the head element of l. *)
   Definition mem_mapsto_array_def {n} (a : Z) (q : dfrac) (l : list (bv n)) : iProp Σ :=
     ∃ len, ⌜n = (len * 8)%N⌝ ∗ ⌜0 ≤ a ∧ a + Z.of_N len * (length l) ≤ 2 ^ 64⌝ ∗
     [∗ list] i↦v∈l, mem_mapsto (a + (i * Z.of_N len)) q v.
@@ -205,6 +296,9 @@ Section definitions.
   Definition mem_mapsto_array_eq {n} : @mem_mapsto_array n = @mem_mapsto_array_def n :=
     seal_eq mem_mapsto_array_aux.
 
+  (* YIQUN: a region of un-init [a, a + n] mem in heap_mem_name. This def *)
+  (* have the permission to this region but don't know the values of this *)
+  (* region. *)
   Definition mem_mapsto_uninit_def (a : Z) (q : dfrac) (n : Z) : iProp Σ :=
     ∃ nn : nat, ⌜n = nn⌝ ∗ ⌜0 ≤ a ∧ a + n ≤ 2 ^ 64⌝ ∗
     [∗ list] i ↦ _ ∈ replicate nn (), ∃ v : bv 8, mem_mapsto_byte heap_mem_name (a + i) q v.
@@ -213,9 +307,14 @@ Section definitions.
   Definition mem_mapsto_uninit_eq : @mem_mapsto_uninit = @mem_mapsto_uninit_def :=
     seal_eq mem_mapsto_uninit_aux.
 
+  (* YIQUN: ghost map auth for mem and backed_mem. THe dom of backed_mem *)
+  (* is same with mem, which means that we can alloc the whole mem as MMIO. *)
   Definition mem_ctx (mem : mem_map) : iProp Σ :=
     ghost_map_auth heap_mem_name 1 mem ∗ backed_mem (dom mem).
 
+  (* YIQUN: fractional ownership of spec at loc heap_spec_trace_name. *)
+  (* Q-YIQUN: what's the interpretation for this spec? what can we gain if *)
+  (* we hold the spec in heap_spec_trace_name ? *)
   Definition spec_trace_raw_def (Pκs: spec) : iProp Σ :=
     own heap_spec_trace_name (to_dfrac_agree (A:=specO) (DfracOwn (1/2)) Pκs).
   Definition spec_trace_raw_aux : seal (@spec_trace_raw_def). by eexists. Qed.
@@ -223,6 +322,7 @@ Section definitions.
   Definition spec_trace_raw_eq : @spec_trace_raw = @spec_trace_raw_def :=
     seal_eq spec_trace_raw_aux.
 
+  (* YIQUN: its part of the global spec. the quantified trick. *)
   Definition spec_trace_def (Pκs: spec) : iProp Σ :=
     ∃ Pκs', ⌜Pκs ⊆ Pκs'⌝ ∗ spec_trace_raw Pκs'.
   Definition spec_trace_aux : seal (@spec_trace_def). by eexists. Qed.
@@ -230,17 +330,118 @@ Section definitions.
   Definition spec_trace_eq : @spec_trace = @spec_trace_def :=
     seal_eq spec_trace_aux.
 
+  (* YIQUN: we have the agreement of Pκs and this is the subset of the *)
+  (* heap_spec_trace(general spec). The parameter κs is the future *)
+  (* observations and the κscur is the observation that already happened. *)
+  (* The heap_full_trace is the traces of the whole program. *)
+  (* satisfies this spec. *)
+  (* Q-YIQUN: the reason that the specified trace doesn't include the *)
+  (* κs is possibly that the κs is the future seq_label(observation, haven't *)
+  (* happened). *)
+  (* Q-YIQUN: the heap_full_trace prophesies the future seq_label. But we *)
+  (* only require that the prefix subsequence of κscur satisfies the *)
+  (* given spec heap_spec_trace. *)
+  (* Q-YIQUN: why do we need the spec_trace_raw? For example, we can own *)
+  (* λ _, False as the spec, then the 2nd pure assertion always holds. The *)
+  (* spec_trace_raw makes sure this spec instance is single and same for *)
+  (* all the executions. *)
+  (* Q-YIQUN: what's the heap_spec_trace? *)
+  (* The spec_trace Pκs says that there is one coarser spec than Pκs we *)
+  (* hold, and spec_ctx says that there is one finer sepc than *)
+  (* heap_spec_trace we hold. They are in the same location *)
+  (* heap_spec_trace_name. Since we instantiate heap_spec_trace with Pκs in *)
+  (* the proof of adequacy theorem, we can say that, we hold both the finer *)
+  (* and the coarser ones in the same location. From the agreement, they *)
+  (* are same and both have 1/2 frac. The result is we have the spec Pκs *)
+  (* with the full permission. Why do we not express this directly? *)
+  (* Is it cuz the user provide the spec but we don't want the user can *)
+  (* modify it or alloc new spec after the provision because wp use it in *)
+  (* the state interpretation? Unlike phisical heap state, which is not *)
+  (* instantiated by the user, user can touch the spec again. Why don't we *)
+  (* use the agreement for spec? *)
+  (* YIQUN: the reason that the CMRA of spec is (frac, agree) is that *)
+  (* the wp internal can change it but the user cannot alloc new one or *)
+  (* change the old one. Please check spec_ctx_cons to find the reason we *)
+  (* want to change it. *)
   Definition spec_ctx (κs : list seq_label) : iProp Σ :=
     ∃ Pκs κscur, ⌜heap_full_trace = κscur ++ κs⌝ ∗
     ⌜heap_spec_trace κscur⌝ ∗
     ⌜Pκs ⊆ λ κs, heap_spec_trace (κscur ++ κs)⌝ ∗
     spec_trace_raw Pκs.
 
+  (* YIQUN: that's the key global GS *)
+  (* YIQUN: check the definition of wp' in iris/weakestpre.v and the *)
+  (* following is my understanding for heap_lang, whose state *)
+  (* interpretation contains two parts, one for physical heap state, one *)
+  (* prophecy id set.  *)
+  (* *)
+  (* Although the parameter κs is arbitrary, the definition of wp' says that *)
+  (* is we have the state_interp for σ1 ns (κ ++ κs) nt, then we have the *)
+  (* reducible e1 σ1 and A WAND! From the reducible condition, we cannot *)
+  (* infer absolutely that we have the antecedent of the wand, *)
+  (* ⌜prim_step e1 σ1 κ e2 σ2 efs⌝, because it requires that the prophesied *)
+  (* observations is CORRECT! e1 in state σ1 REALLY reduces to e2 in state σ *)
+  (* and the generated observation IS κ. The reducible condition only *)
+  (* guarantees that the e1 is reducible in σ1 and doesn't guarantee the *)
+  (* observation during this process. *)
+  (*                                                                     *)
+  (* If the parameter κs we provide is wrong, this inference chain will *)
+  (* stuck in some step. Probably, that's why we can control which thread *)
+  (* win the race. By providing the specific observation sequence κ, we can *)
+  (* control the execution of the interleaved threads. The grain of this *)
+  (* control is decided by the type of observation and the head-reduction. *)
+  (* If we wanna fine-grain control, the type of observation must be *)
+  (* refined either. If we view the observation as the events we care, we *)
+  (* can say that, even if the order of thread execution is difference, *)
+  (* from the view of events we care, they are same. *)
+  (*                                                                      *)
+  (* We can observe the above discussion from the proof of the adequacy. *)
+  (* Observing the precondition of adequacy theorem in the paper Future is *)
+  (* Ours, we found that the theorem is three-phase wand: *)
+  (* wp -∗ thread-pool red -* safety. The thread-pool red tells us the *)
+  (* observations κ we will have in the course of program's execution. We *)
+  (* can unfold the definition and wp and fill κ, which is one of the *)
+  (* sensible observation trace. Then we can get the safety by induction. *)
+  (*                                                                      *)
+  (* The transition from state_interp_1 to state_interp_2 actually says *)
+  (* that, in the state_1, we prophecy the future observation is κ ++ κs, *)
+  (* and in the state_2, we prophecy the future observation is κs because *)
+  (* we already konw that the κ is the fact, the history. We update the *)
+  (* physical state Π and keep it reflecting only the FUTURE observations. *)
+  (*                                                                     *)
+  (* We can understand the Resolve operation as the following. The Resolve w*)
+  (* says that we resolve that next observation for id p is w. If the *)
+  (* prophecy we make for id p is the trace κs(Proph(p, κs)). If the head *)
+  (* element of κs is not w, then the prophecy is wrong, so we should have *)
+  (* w = head(κs) in the postcondition of Resolve. Thus, what we get from *)
+  (* NewProph is a ghost state Proph(p, κs) and κs is the CORRECT future *)
+  (* observations. This correct one is existentially quantified and so we *)
+  (* don't konw it's actual value. *)
+  (*                                                                      *)
+  (*                                                                      *)
+  (* YIQUN: the following is the understanding for the islaris: *)
+  (* The state interpretation says that we have the instr map and mem as *)
+  (* the phsical state and the spec_ctx as the future events in the *)
+  (* course of instruction execution. The spec_ctx says that, the already- *)
+  (* happened events κscur satisfies the heap_trace_spec. *)
+  (*                                                                      *)
+  (* We say κscur is events which already happen because the *)
+  (* heap_full_trace is the whole trace, which you can see that the κs in *)
+  (* nsteps is passsed as the heap_full_trace in the constructor HeapG in *)
+  (* the proof of adequacy theorem, and the κs is the future events, which *)
+  (* is the arguments of the state_interp as usual. *)
+  (*                                                                      *)
+  (* We only care that the already-happend events satisfies the spec cuz *)
+  (* the parameter κs in wp' probably makes the wrong prophecy and thus *)
+  (* the following events will not happen actually and we don't care them. *)
+  (* *)
+  (* Q-YIQUN: why do we need the spec_trace_raw? *)
   Definition state_ctx (σ : seq_global_state) (κs : list seq_label) : iProp Σ :=
     spec_ctx κs ∗
     instr_ctx σ.(seq_instrs) ∗
     mem_ctx σ.(seq_mem).
 
+  (* YIQUN: that's the key thread-local GS *)
   Definition thread_ctx `{!threadG} (regs : reg_map) : iProp Σ :=
     regs_ctx regs.
 
@@ -800,6 +1001,14 @@ Section spec.
     by iFrame.
   Qed.
 
+  (* YIQUN: the lemma says that if the event κ satisfies the spec Pκs and *)
+  (* the alredy-happened pbservations are right when the future *)
+  (* observations are κ :: κs, then we can move κ as the already-happened *)
+  (* observation and spec_trace is updated to  (λ κs, Pκs (κ::κs). The *)
+  (* update in spec_trace embed the previous events into the predicate *)
+  (* Pκs. *)
+  (* YIQUN: Besides, this lemma provides the way to update the spec_ctx *)
+  (* when the step generate event. *)
   Lemma spec_ctx_cons κ κs (Pκs : spec):
     Pκs [κ] →
     spec_ctx (κ :: κs) -∗ spec_trace Pκs ==∗

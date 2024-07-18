@@ -8,10 +8,10 @@ ifetch = "Read_ifetch"
 read_exclusives = ["Read_RISCV_reserved", "Read_RISCV_reserved_acquire", "Read_RISCV_reserved_strong_acquire"]
 write_exclusives = ["Write_RISCV_conditional", "Write_RISCV_conditional_release", "Write_RISCV_conditional_strong_release"]
 
-assembler = "riscv64-linux-gnu-as -march=rv64imac"
-objdump = "riscv64-linux-gnu-objdump"
-linker = "riscv64-linux-gnu-ld"
-nm = "riscv64-linux-gnu-nm"
+assembler = "riscv64-elf-as -march=rv64imac"
+objdump = "riscv64-elf-objdump"
+linker = "riscv64-elf-ld"
+nm = "riscv64-elf-nm"
 
 [const_primops]
 platform_write_mem_ea = false

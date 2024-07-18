@@ -26,3 +26,5 @@ _opam*
 /deps/*.tar.gz
 /deps/bbv/
 /deps/sail-riscv/
+examples/a.out
+instructions/*/.*.aux

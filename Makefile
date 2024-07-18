@@ -17,6 +17,15 @@ update_etc:
 	@dune build _build/install/default/etc/islaris/riscv64_isla_coq.toml
 .PHONY: update_etc
 
+generate_test: update_etc
+	@echo "[islaris] examples/add.dump"
+	@PATH=$$PWD/bin:$$PATH dune exec -- islaris examples/add.dump -j 8 -o instructions/add --coqdir=isla.instructions.add --arch=riscv64
+.PHONY: generate_test
+
+own_test:
+	@dune build examples/add.vo --display short
+.PHONY: own_test
+
 generate_memory_instructions: examples/memory_instructions.dump update_etc
 	@echo "[islaris] $<"
 	@PATH=$$PWD/bin:$$PATH dune exec -- islaris $< -j 8 -o instructions  -n "instr_{instr}" --coqdir=isla.instructions

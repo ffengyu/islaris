@@ -382,6 +382,7 @@ Global Hint Extern 10 (LiTactic (compute_wp_exp _)) =>
   eapply compute_wp_exp_hint; solve_compute_wp_exp : typeclass_instances.
 
 (** ** [regcol_compute_hint] *)
+(* YIQUN: the value we get from f x satisfies T. *)
 Definition regcol_compute_hint {Σ A B} (f : A → option B) (x : A) (T : B → iProp Σ) : iProp Σ :=
   ∃ y, ⌜f x = Some y⌝ ∗ T y.
 Arguments regcol_compute_hint : simpl never.
@@ -715,6 +716,9 @@ Section instances.
   (* If there is no later in the goal (i.e. the second parameter to FindInstrKind is false),
      we should only find instr_pre with false in the context. Otherwise, we can find an
      arbitrary instr_pre. *)
+  (* Q-YIQUN: how to choose instr_pre and instr ? by priority? *)
+  (* YIQUN: we always request the continution holds with the return value *)
+  (* (the value we find in context). *)
   Lemma find_in_context_instr_kind_pre_false a T:
     (∃ P, instr_pre' false a P ∗ T (IKPre false P))
     ⊢ find_in_context (FindInstrKind a false) T.
@@ -1193,6 +1197,16 @@ Section instances.
   Lemma li_instr_pre l a P:
     (li_tactic (normalize_instr_addr a) (λ normPC,
      let newPC := Z_to_bv 64 normPC in
+     (* YIQUN: The find_in_context means that there is a value of type *)
+     (* instr_kind, which satisfies both the find func `FindInstrKind` *)
+     (* and the continuation. *)
+     (* 1. IKInstr None: the address has no trace and to be safe, we need *)
+     (* to make the the already-happened observation is right. see *)
+     (* instr_pre_intro_None. *)
+     (* 2. IKInstr Some; the address has the trace and to be safe, we *)
+     (* need to make sure wpasm t. See instr_pre_intro_Some. *)
+     (* 3. IKPre: we have the instr_pre in the same address, we only need *)
+     (* to prove the mono. *)
      find_in_context (FindInstrKind normPC l) (λ ik,
      match ik with
      | IKInstr (Some t) =>
@@ -1307,6 +1321,16 @@ Section instances.
   Qed.
 
   Lemma li_wp_assume_reg r v ann es :
+    (* YIQUN: the FindRegMapsTo find either a r↦v or all the registers. *)
+    (* The return value also need to satisfy the continuation. *)
+    (* 1. wp_assume_reg directly. *)
+    (* 2. we get the r↦v from the reg_col regs. *)
+    (* YIQUN: we can understand this transformation in this way:if the *)
+    (* head event is AssumeReg, the WPasm is equiv to the following two *)
+    (* cases depending on the registers we found. We can regard the find *)
+    (* function in find_in_context as a precondition. If we can find *)
+    (* something satisfying the find function, then the return value *)
+    (* can infer the goal if the return value satisfies a continuation. *)
     (find_in_context (FindRegMapsTo r) (λ rk,
       match rk with
       | RKMapsTo v' => (⌜v = v'⌝ ∗ (r ↦ᵣ v' -∗ WPasm es))
