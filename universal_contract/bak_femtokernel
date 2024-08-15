@@ -1,0 +1,87 @@
+Require Import isla.riscv64.riscv64.
+
+(* reg_col for GPR and PMP? How about other CSR? *)
+Definition Step_pre `{!islaG Σ} `{!threadG} m h i mpp : iProp Σ :=
+  "PC" ↦ᵣ RVal_Bits i ∗ "cur_privilege" ↦ᵣ RVal_Enum m ∗
+  "mtvec" # "bits" ↦ᵣ RVal_Bits h ∗ (∃ c, "mcause" # "bits" ↦ᵣ RVal_Bits c) ∗
+  "mstatus" # "bits" ↦ᵣ RVal_Bits mpp ∗ (∃ c, "mepc" ↦ᵣ RVal_Bits c).
+
+Definition Execution `{!islaG Σ} `{!threadG} m h mpp : iProp Σ :=
+  (∃ i, "PC" ↦ᵣ RVal_Bits i) ∗ "cur_privilege" ↦ᵣ RVal_Enum m ∗
+  "mtvec" # "bits" ↦ᵣ RVal_Bits h ∗ (∃ c, "mcause" # "bits" ↦ᵣ RVal_Bits c) ∗
+  "mstatus" # "bits" ↦ᵣ RVal_Bits mpp ∗ (∃ c, "mepc" ↦ᵣ RVal_Bits c).
+
+Context `{!islaG Σ} `{!threadG}.
+
+Definition CSRMod m : iProp Σ :=
+  (∃ i, "PC" ↦ᵣ RVal_Bits i) ∗ ⌜m = "Machine"⌝ ∗ "cur_privilege" ↦ᵣ RVal_Enum m ∗
+  (∃ h, "mtvec" # "bits" ↦ᵣ RVal_Bits h) ∗ (∃ c, "mcause" # "bits" ↦ᵣ RVal_Bits c) ∗
+  (∃ ms, "mstatus" # "bits" ↦ᵣ RVal_Bits ms) ∗ (∃ me, "mepc" ↦ᵣ RVal_Bits me).
+
+Definition Trap h : iProp Σ :=
+  (∃ i, "PC" ↦ᵣ RVal_Bits i) ∗ "cur_privilege" ↦ᵣ RVal_Enum "Machine" ∗
+  "mtvec" # "bits" ↦ᵣ RVal_Bits h ∗ (∃ c, "mcause" # "bits" ↦ᵣ RVal_Bits c) ∗
+  "mstatus" # "bits" ↦ᵣ RVal_Bits (BV 64 0x0000000000000000)  ∗ (∃ c, "mepc" ↦ᵣ RVal_Bits c).
+
+Definition Recover  m h : iProp Σ :=
+  (∃ i, "PC" ↦ᵣ RVal_Bits i ∗ "mepc" ↦ᵣ RVal_Bits i) ∗ ⌜m = "Machine" ⌝ ∗
+  "cur_privilege" ↦ᵣ RVal_Enum "User" ∗ "mtvec" # "bits" ↦ᵣ RVal_Bits h ∗
+  (∃ c, "mcause" # "bits" ↦ᵣ RVal_Bits c) ∗
+  "mstatus" # "bits" ↦ᵣ RVal_Bits (BV 64 0x0000000000000000) ∗ (∃ c, "mepc" ↦ᵣ RVal_Bits c).
+
+Definition step_spec m h i mpp : iProp Σ :=
+  Step_pre m h i mpp ∗
+  (* What's the next instr address? *)
+  instr_pre (Z.of_N (bvn_n i) + 4) (
+    Execution m h mpp
+    ∨ CSRMod m
+    ∨ Trap h
+    ∨ Recover m h
+  ).
+
+Definition step_contract : iProp Σ :=
+  ∀ m h i mpp,
+  instr_body (Z.of_N (bvn_n i)) (step_spec m h i mpp).
+
+Definition cycle_precond m h i mpp : iProp Σ :=
+  Step_pre m h i mpp ∗
+  (∀ a, instr_body a (CSRMod m)) ∗
+  (∀ a, instr_body a (Trap h)) ∗
+  (∀ a, instr_body a (Recover m h)).
+
+Definition cycle_contract : iProp Σ :=
+  ∀ m h i mpp,
+   (∃ t, instr (Z.of_N (bvn_n i)) (Some t) ∗ instr (Z.of_N (bvn_n i) + 4) (Some t)) -∗ instr_body (Z.of_N (bvn_n i)) (cycle_precond m h i mpp).
+
+(* Implicit Arg in Hypothesis *)
+Hypothesis valid_step_contract :
+  ⊢ step_contract.
+
+Lemma valid_cycle_contract : ⊢ cycle_contract.
+Proof.
+  (* Where to eliminate the later? *)
+  iLöb as "IH".
+  iIntros (m h i mpp) "(%t & [#Hinst1 #Hinst2])".
+  iApply (instr_pre_intro_Some with "Hinst1").
+  iIntros "(Hpre & HExec & HTrap & HReco) HPC".
+  iAssert step_contract as "Hstep"; first iApply valid_step_contract.
+  iSpecialize ("Hstep" $! m h i mpp).
+  rewrite {1}instr_pre'_eq /instr_pre'_def /=.
+  iAssert (step_spec m h i mpp) with "[$Hpre HExec HTrap HReco]" as "Hstep_spec".
+  2:{
+    iPoseProof ("Hstep" with "Hstep_spec") as (ins) "[Hinst' Hwp]".
+    (* instrs should agree *)
+    shelve.
+  }
+  1:{
+    iApply instr_pre_intro_Some; first by iFrame.
+    iIntros "[HRec | [HRec | [HRec | HRec]]]".
+    2,3,4:shelve.
+    iIntros "HPC".
+    iAssert cycle_contract as "IH'".
+    1: shelve.
+    unfold Execution.
+    iDestruct "HRec" as "((%i0 & ?) & ? & ? & ? & ? & ?)".
+  }
+
+(* stuckness *)

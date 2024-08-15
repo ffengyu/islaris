@@ -298,6 +298,10 @@ Section lifting.
     iFrame.
   Qed.
 
+  (* YIQUN-TODO: elim later in the execution. *)
+  Lemma wp_elim_later P e t:
+    (P -∗ WPasm (t)) ⊢ (▷ P -∗ WPasm (e:t:t)).
+  Abort.
   (* YIQUN: the Lemma wp_next_instr can be rephrased in hoare style. *)
   Lemma wp_next_instr_1 (PC : bv 64) ins :
     instr (bv_unsigned PC) (Some ins) -∗
@@ -841,6 +845,11 @@ Section lifting.
     iFrame.
   Qed.
 
+  (* YIQUN: discuss the difference between assume and assert. *)
+  (* Assert: return value v can be false and in this case we don't have *)
+  (* WPasm es because we "assert" the truth but get the false. In this *)
+  (* case, we can say the precondition proof is contradictory and don't *)
+  (* need to prove.*)
   Lemma wp_assert es ann e:
     WPexp e {{ v, ∃ b, ⌜v = Val_Bool b⌝ ∗ (⌜b = true⌝ -∗ WPasm es) }} -∗
     WPasm (Smt (Assert e) ann :t: es).
@@ -862,6 +871,10 @@ Section lifting.
     iApply "Hcont"; [done..|iFrame].
   Qed.
 
+  (* YIQUN: discuss the difference between assume and assert. *)
+  (* Assume: the return value v must be true otherwise the proof is *)
+  (* stuck because we "assume" this and the proof can go on only if the *)
+  (* assumption is true. *)
   Lemma wp_assume es ann e:
     WPaexp e {{ v, ⌜v = Val_Bool true⌝ ∗ WPasm es }} -∗
     WPasm (Assume e ann :t: es).

@@ -226,6 +226,10 @@ Definition normalize_instr_addr {Σ} (a1 : Z) (T : Z → iProp Σ) : iProp Σ :=
 Arguments normalize_instr_addr : simpl never.
 Global Typeclasses Opaque normalize_instr_addr.
 
+(* YIQUN: Quoted from coqdoc, In the record form, the fields can be given *)
+(* in any order. Fields that can be inferred by unification or by using *)
+(* obligations (see Program) may be omitted. H in def reps bv_wrap eq in *)
+(* the implication. *)
 Program Definition normalize_instr_addr_hint {Σ} a1 a2 :
   (bv_wrap 64 a1 = bv_wrap 64 a2) →
   LiTactic (normalize_instr_addr (Σ:=Σ) a1) := λ H, {|
@@ -248,6 +252,15 @@ Proof.
   f_equal. bv_simplify. bv_simplify Ha. bitblast as i. by bitblast Ha with i.
 Qed.
 
+Lemma normalize_instr_addr_riscv64_ret_tac_2 a r:
+  bv_extract 0 1 a = (BV 1 0) →
+  bv_wrap 64 (bv_unsigned a) = r →
+  bv_wrap 64 (bv_unsigned (bv_and (bv_add a (BV 64 0)) (BV 64 0xfffffffffffffffe))) = r.
+Proof.
+  move => Ha <-. have -> : (bv_add a (BV 64 0)) = a by bv_solve.
+  f_equal. bv_simplify. bv_simplify Ha. bitblast as i. by bitblast Ha with i.
+Qed.
+
 Ltac solve_normalize_instr_addr :=
   unfold normalize_instr_addr; unLET;
   try lazymatch goal with
@@ -260,6 +273,9 @@ Ltac solve_normalize_instr_addr :=
   | |- bv_wrap _ (bv_unsigned (bv_or (bv_and (bv_add _ _) _) _)) = _ => apply normalize_instr_addr_riscv64_ret_tac;[done|]
   end;
   try lazymatch goal with
+  | |- bv_wrap _ (bv_unsigned (bv_and (bv_add _ _) _)) = _ => apply normalize_instr_addr_riscv64_ret_tac_2;[done|]
+  end;
+  try lazymatch goal with
   | |- bv_wrap _ (_ + ?a) = _ => reduce_closed a
   end;
   exact: eq_refl.
@@ -269,6 +285,8 @@ Global Hint Extern 10 (LiTactic (normalize_instr_addr _)) =>
 
 
 (** * [normalize_bv_wrap] *)
+(* YIQUN: T is the continuation. This definition says that, if the *)
+(* leftmost conjunction is a bv eq, how should we deduce next step. *)
 Definition normalize_bv_wrap {Σ} (a1 : Z) (T : Z → iProp Σ) : iProp Σ :=
   ∃ a2, ⌜bv_wrap 64 a1 = bv_wrap 64 a2⌝ ∗ T a2.
 Arguments normalize_bv_wrap : simpl never.
@@ -1709,6 +1727,7 @@ Definition entails_to_simplify_hyp {Σ} (n : N) {P Q : iProp Σ} (Hent : (P ⊢ 
   λ G, i2p (tac_entails_to_simplify_hyp P Q Hent G).
 
 (* TODO: upstream? *)
+(* Q-YIQUN: why do we bind things? What's the benefit? *)
 Ltac liLetBindHint :=
   idtac;
   match goal with
@@ -1738,7 +1757,14 @@ Definition TRACE_LET {A} (x : A) : A := x.
 Arguments TRACE_LET : simpl never.
 Notation "'HIDDEN'" := (TRACE_LET _) (only printing).
 
-
+(* YIQUN: clear the TRACE_LET in envs and then wrap the postcondition H *)
+(* with LET_IN. In case of WPasm, it aadd a new TRACE_LET refering to *)
+(* the tail trace. *)
+(* Q-YIQUN: learn the benefit of this simple wrapper LET_ID or TRACE_LET. *)
+(* The LET_IN wrap the postcondition and the TRACE_LET wrap the tail *)
+(* trace. It looks that we always try to warp the non-head things *)
+(* together. From the Notation, it hides the non-head things. Is it *)
+(* better for lithium to process automatically? *)
 Ltac liAIntroduceLetInGoal :=
   (* kill old unused TRACE_LET. This can happen e.g. because of subst_event unfolding TRACE_LET. *)
   try match goal with | H := TRACE_LET _ |- _ => clear H end;
@@ -1862,6 +1888,9 @@ Ltac liAOther :=
   end.
 
 Ltac liAStep :=
+ (* YIQUN: liEnsureInvariant bind the envs in envs_entais. In this way, *)
+ (* we can conveniently to infer the next from the envs instead of decomp *)
+ (* the goal envs_entail every time. *)
  liEnsureInvariant;
  try liAIntroduceLetInGoal;
  first [

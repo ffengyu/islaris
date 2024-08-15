@@ -1,0 +1,6 @@
+(coq.theory
+ (name isla.dorami)
+ (package islaris)
+ (flags :standard -w -notation-overridden -w -redundant-canonical-projection)
+ (synopsis "???")
+ (theories isla isla.riscv64))

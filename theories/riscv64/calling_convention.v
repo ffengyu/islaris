@@ -62,14 +62,19 @@ Require Import isla.riscv64.sys_regs.
 Definition tmp_registers : list string :=
   ["x5"; "x6"; "x7"; "x28"; "x29"; "x30"; "x31"].
 
+(* YIQUN: is Q the cotinuation, parameterized by the two return values *)
+(* a0 and a1(x10 and x11). *)
 Definition c_call_ret `{!islaG Σ} `{!threadG} (stack_size : Z) (regs : list valu) (ret sp : bv 64) (Q : (list (bv 64) → iProp Σ)) : iProp Σ :=
   reg_col sys_regs ∗
+  (* Q-YIQUN: possibly be clobbered? *)
   reg_col ((λ r, (KindReg r, BitsShape 64)) <$> (["x1"; "x12"; "x13"; "x14"; "x15"; "x16"; "x17"] ++ tmp_registers)) ∗
+  (* YIQUN: callee-saved regs *)
   reg_col (zip_with (λ r v, (KindReg r, ExactShape v)) ["x8"; "x9"; "x18"; "x19"; "x20"; "x21"; "x22"; "x23"; "x24"; "x25"; "x26"; "x27"] regs) ∗
   "x10" ↦ᵣ: λ r10, ∃ b10 : bv 64, ⌜r10 = RVal_Bits b10⌝ ∗
   "x11" ↦ᵣ: λ r11, ∃ b11 : bv 64, ⌜r11 = RVal_Bits b11⌝ ∗
   "x2" ↦ᵣ RVal_Bits sp ∗
   (bv_unsigned sp - stack_size) ↦ₘ? stack_size ∗
+  (* YIQUN: Integer Calling Convention. a0 and a1 are used to return vals. *)
   Q [b10; b11].
 Global Instance : LithiumUnfold (@c_call_ret) := I.
 
@@ -78,6 +83,7 @@ Definition c_call `{!islaG Σ} `{!threadG} (stack_size : Z) (P : list (bv 64) �
   ∃ (sp ret : bv 64),
   reg_col sys_regs ∗
   reg_col ((λ r, (KindReg r, BitsShape 64)) <$> tmp_registers) ∗
+  (* YIQUN: arguments reg *)
   "x10" ↦ᵣ: λ r10, ∃ b10 : bv 64, ⌜r10 = RVal_Bits b10⌝ ∗
   "x11" ↦ᵣ: λ r11, ∃ b11 : bv 64, ⌜r11 = RVal_Bits b11⌝ ∗
   "x12" ↦ᵣ: λ r12, ∃ b12 : bv 64, ⌜r12 = RVal_Bits b12⌝ ∗
@@ -86,6 +92,7 @@ Definition c_call `{!islaG Σ} `{!threadG} (stack_size : Z) (P : list (bv 64) �
   "x15" ↦ᵣ: λ r15, ∃ b15 : bv 64, ⌜r15 = RVal_Bits b15⌝ ∗
   "x16" ↦ᵣ: λ r16, ∃ b16 : bv 64, ⌜r16 = RVal_Bits b16⌝ ∗
   "x17" ↦ᵣ: λ r17, ∃ b17 : bv 64, ⌜r17 = RVal_Bits b17⌝ ∗
+  (* YIQUN: Callee-saved reg *)
   "x8" ↦ᵣ: λ r8, ⌜valu_has_shape r8 (BitsShape 64)⌝ ∗
   "x9" ↦ᵣ: λ r9, ⌜valu_has_shape r9 (BitsShape 64)⌝ ∗
   "x18" ↦ᵣ: λ r18, ⌜valu_has_shape r18 (BitsShape 64)⌝ ∗
@@ -104,6 +111,23 @@ Definition c_call `{!islaG Σ} `{!threadG} (stack_size : Z) (P : list (bv 64) �
   ⌜bv_extract 0 1 ret = (BV 1 0)⌝ ∗ ⌜bv_extract 1 1 ret = (BV 1 0)⌝ ∗
   ⌜0x0000000080000000 ≤ bv_unsigned sp - stack_size ∧ bv_unsigned sp < 0x0000000080000000 + 0x0000000004000000⌝ ∗
   (bv_unsigned sp - stack_size) ↦ₘ? stack_size ∗
+  (* YIQUN: P: arg_list -> sp -> RET. RET is the decription of the *)
+  (* postcondition of calling ? *)
+  (* YIQUN: the last arg RET returns a prop given a predicate *)
+  (* parameterized by return values. The RET returns the instr_pre given *)
+  (* the predicate parameterized over return values. It says that if *)
+  (* we have the c_call_ret, then trace starting from ret is safe. *)
+  (* The c_call_ret contains the registers and a predicate over ret val. *)
+  (* Then last term (P args sp RET) in c_call says that how to use these *)
+  (* three things. *)
+  (* YIQUN: Q is the predicate over return values. We give the P := *)
+  (* λ args sp RET, P(args, sp) ∗ RET(pred_over_ret_val). Then the first *)
+  (* term can be the precondition and the second term is the postcondition *)
+  (* of the calling. That is, we pass the precondition P and predicate *)
+  (* over ret val in the definition of P because how P will be used in *)
+  (* c_call. *)
+  (* Q-YIQUN: is this call_cc? why don't we pass precondition and *)
+  (* postcondition separately? *)
   P [b10; b11; b12; b13; b14; b15; b16; b17] sp (λ Q,
   instr_pre (bv_unsigned ret) (
       c_call_ret stack_size [r8; r9; r18; r19; r20; r21; r22; r23; r24; r25; r26; r27] ret sp Q

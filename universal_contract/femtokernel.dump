@@ -1,0 +1,25 @@
+0000000000000000 <kernel>:
+   0:	00000097          	auipc	ra,0x0
+   4:	00008093          	mv	ra,ra
+   8:	3b009073          	csrw	pmpaddr0,ra
+   c:	000100b7          	lui	ra,0x10
+  10:	3b109073          	csrw	pmpaddr1,ra
+  14:	000010b7          	lui	ra,0x1
+  18:	f000809b          	addiw	ra,ra,-256 # f00 <adv+0xeb4>
+  1c:	3a009073          	csrw	pmpcfg0,ra
+  20:	00000097          	auipc	ra,0x0
+  24:	00008093          	mv	ra,ra
+  28:	30509073          	csrw	mtvec,ra
+  2c:	00000097          	auipc	ra,0x0
+  30:	00008093          	mv	ra,ra
+  34:	34109073          	csrw	mepc,ra
+  38:	30001073          	csrw	mstatus,zero
+  3c:	30200073          	mret
+
+0000000000000040 <ih>:
+  40:	00000097          	auipc	ra,0x0
+  44:	00c0a083          	lw	ra,12(ra) # 4c <adv>
+  48:	30200073          	mret
+
+000000000000004c <adv>:
+  4c:	00000013          	nop
