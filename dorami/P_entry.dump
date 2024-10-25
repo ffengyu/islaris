@@ -1,0 +1,19 @@
+0000000000000000 <P_entry_from_F>:
+   0:	001372b7          	lui	t0,0x137
+   4:	3132829b          	addiw	t0,t0,787 # 137313 <P_entry_from_F+0x137313>
+   8:	00e29293          	slli	t0,t0,0xe
+   c:	4c528293          	addi	t0,t0,1221
+  10:	00d29293          	slli	t0,t0,0xd
+  14:	d1e28293          	addi	t0,t0,-738
+//@constraint: = cur_privilege Machine
+//@constraint: = x5 0x00009B9898989D1E
+//@constraint: = pmp0cfg.bits 0x1E
+//@constraint: = pmp1cfg.bits 0x9D
+//@constraint: = pmp2cfg.bits 0x98
+//@constraint: = pmp3cfg.bits 0x9D
+//@constraint: = pmp4cfg.bits 0x98
+//@constraint: = pmp5cfg.bits 0x9B
+//@constraint: = pmp6cfg.bits 0x00
+//@constraint: = pmp7cfg.bits 0x00
+//@constraint: = mseccfg.bits 0x0000000000000007
+  18:	3a029073          	csrw	pmpcfg0,t0

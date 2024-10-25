@@ -1,14 +1,26 @@
 From iris.program_logic Require Export weakestpre.
 From isla Require Export opsem ghost_state.
-Import uPred.
-
-Context `{!heapG Σ}.
-Context `{!islaG Σ} `{!threadG}.
 
 Inductive AccessType : Set :=
 | Read
 | ReadWrite
 | Execute.
+
+(* TODO: adapt it to support more pmp entries. *)
+Definition pmp_regs (entries: list (bv 64 * bv 8)) :=
+  match entries with
+  | (cfg0, addr0) :: (cfg1, addr1) :: _ => [
+      (KindReg "pmpaddr0", ExactShape (RVal_Bits addr0));
+      (KindReg "pmpaddr1", ExactShape (RVal_Bits addr1));
+      (KindReg "pmpaddr2", BitsShape 64);
+      (KindReg "pmpaddr3", BitsShape 64);
+      (KindReg "pmp0cfg", ExactShape (RVal_Bits cfg0));
+      (KindReg "pmp1cfg", ExactShape (RVal_Bits cfg1));
+      (KindReg "pmp2cfg", BitsShape 64);
+      (KindReg "pmp3cfg", BitsShape 64)
+    ]
+  | _ => []
+  end.
 
 Definition bv_to_bool {n} (x : bv n) : bool :=
   bool_decide (bv_unsigned x ≠ 0).
@@ -62,7 +74,7 @@ Definition pmpAddrRange (pmpaddr: bv 64) : Z * Z :=
   let len := bv_add_Z mask 1 in
   (bv_unsigned lo, bv_unsigned len).
 
-Definition interp_pmp_perm (pmpaddr: bv 64) (acc: AccessType): iProp Σ :=
+Definition interp_pmp_perm `{!heapG Σ} (pmpaddr: bv 64) (acc: AccessType): iProp Σ :=
   let (lo, len) := pmpAddrRange pmpaddr in
   match acc with
   | Read      => lo ↦ₘ{DfracOwn (1 / 2)}? len
@@ -76,11 +88,8 @@ Definition interp_pmp_perm (pmpaddr: bv 64) (acc: AccessType): iProp Σ :=
 (* corresponding perms. *)
 (* TODO: the user/supervisor mode don't have pmp perm but should have the *)
 (* capability to gain the corresponding perms. *)
-Definition interp_pmp_addr_access (pmpaddr pmpcfg p: string) (acc: AccessType): iProp Σ :=
-  (∀ addr_reg cfg_reg, ∃ (addr: bv 64) (cfg: bv 8),
-     ⌜addr_reg = RVal_Bits addr⌝ ∗ ⌜cfg_reg = RVal_Bits cfg⌝ ∗
-     pmpaddr ↦ᵣ addr_reg ∗ pmpcfg ↦ᵣ cfg_reg ∗ ⌜pmp_check_perm cfg p acc⌝ -∗
-       pmpaddr ↦ᵣ addr_reg ∗ pmpcfg ↦ᵣ cfg_reg ∗ interp_pmp_perm addr acc)%I.
+Definition interp_pmp_addr_access  `{!heapG Σ} (addr: bv 64) (cfg: bv 8) (p: sail_name) (acc: AccessType): iProp Σ :=
+  ⌜pmp_check_perm cfg p acc⌝ -∗ interp_pmp_perm addr acc.
 
 (* If we have this def in the precondition, we guarantee that we can *)
 (* gain the corresponding ghost state(mem perm or instr) from every *)
@@ -89,11 +98,12 @@ Definition interp_pmp_addr_access (pmpaddr pmpcfg p: string) (acc: AccessType): 
 (* wand, we cannot gain the new perm from them. *)
 (* TODO: Provide a way to recover the wand so we can change the pmp rules. *)
 (* Probably the reverse wand? *)
-Definition interp_pmp (entries: list (string * string)) (p : string) : iProp Σ :=
-  ([∗ list] ent ∈ entries, let pmpaddr := ent.1 in let pmpcfg := ent.2 in
+(* FIXME: only the first matching one provide the perm. *)
+Definition interp_pmp `{!heapG Σ} (entries: list (bv 64 * bv 8)) (p : sail_name) : iProp Σ :=
+  [∗ list] ent ∈ entries, let pmpaddr := ent.1 in let pmpcfg := ent.2 in
     interp_pmp_addr_access pmpaddr pmpcfg p Read ∗
     interp_pmp_addr_access pmpaddr pmpcfg p ReadWrite ∗
-    interp_pmp_addr_access pmpaddr pmpcfg p Execute)%I.
+    interp_pmp_addr_access pmpaddr pmpcfg p Execute.
 
 (* Second choice: check single bytes or instruction. *)
 Fixpoint pmp_single_access (entries: list (bv 64 * bv 8)) (a: Z) (p: string) (acc: AccessType): bool :=
@@ -108,7 +118,7 @@ Fixpoint pmp_single_access (entries: list (bv 64 * bv 8)) (a: Z) (p: string) (ac
   | []             => false
   end.
 
-Definition interp_pmp_single_access (a: Z) (acc: AccessType) : iProp Σ :=
+Definition interp_pmp_single_access `{!heapG Σ} (a: Z) (acc: AccessType) : iProp Σ :=
   match acc with
   | Read      => a ↦ₘ{DfracOwn (1 / 2)}? 1
   | ReadWrite => a ↦ₘ? 1
@@ -118,7 +128,7 @@ Definition interp_pmp_single_access (a: Z) (acc: AccessType) : iProp Σ :=
 (* Every time we want to access something, we check if the cur_privilege *)
 (* and pmp entries satisfy the pure proposition in the antecedent of the *)
 (* wand. *)
-Definition interp_pmp' (entries: list (bv 64 * bv 8)) (p: string) : iProp Σ :=
+Definition interp_pmp' `{!heapG Σ} (entries: list (bv 64 * bv 8)) (p: string) : iProp Σ :=
   [∗ list] a ↦ _ ∈ replicate (2 ^ 64) (),
     (⌜pmp_single_access entries (Z.of_nat a) p Read⌝ -∗ interp_pmp_single_access a Read) ∗
     (⌜pmp_single_access entries (Z.of_nat a) p ReadWrite⌝ -∗ interp_pmp_single_access a ReadWrite) ∗

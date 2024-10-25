@@ -229,10 +229,11 @@ Section definitions.
     [∗ list] v ∈ regs, ∃ vact, ⌜valu_has_shape vact v.2⌝ ∗ gen_reg_mapsto thread_regs_name thread_struct_regs_name v.1 1 vact.
 
   (* YIQUN: the two map_Forall pure assertions make sure the regs is *)
-  (* sensible, which means regs contains two parts, one is regular reg, *)
-  (* and another is struct reg. The 3rd assertion says that the regs cannot *)
-  (* be full of struct reg. THe final two give use the ghost_map_auth. *)
-  (* That's the map we want. *)
+  (* sensible, which means regs contains two parts rs and srs, rs is about *)
+  (* regular reg, and srs is about struct reg. The 3rd assertion says that *)
+  (* the reg in regs cannot both in rs and srs, that is rs and srs are *)
+  (* separated. The final two give the auth reg_map and the notation ↦ᵣ *)
+  (* give the frag single reg. *)
   Definition regs_ctx `{!threadG} (regs : reg_map) : iProp Σ :=
     ∃ rs (srs : gmap (string * string) valu),
       ⌜map_Forall (λ r v, regs !! r = Some v) rs⌝ ∗

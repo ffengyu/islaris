@@ -371,6 +371,14 @@ Section lifting.
       by iApply (wp_next_instr_extern with "[$] [$] [$]").
   Qed.
 
+  Lemma wp_next_instr_pre' (PC : bv 64) P l t:
+    arch_pc_reg ↦ᵣ RVal_Bits PC -∗
+    instr (bv_unsigned PC) (Some t) -∗
+    instr_pre' l (bv_unsigned PC) P -∗
+    P -∗
+    WPasm t.
+  Abort.
+
   Lemma instr_pre_wand a1 a2 l1 l2 P Q:
     implb l1 l2 →
     bv_wrap 64 a1 = bv_wrap 64 a2 →

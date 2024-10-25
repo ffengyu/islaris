@@ -80,6 +80,7 @@ let event_filter : Arch.t -> int -> event -> bool = fun arch i e ->
   | WriteReg(n,_,_,_) when ignored n                     -> false
   | ReadReg(_,_,_,_)
   | Smt(Assert(_), _) when !no_aggressive_simplification -> true
+  | ReadReg(_,Cons(_),RegVal_Struct(_),_)                -> true
   | ReadReg(_,_,v,_)                                     -> is_symbolic v
   | Smt(Assert(_), _)                                    -> i = 0
   | Cycle(_)

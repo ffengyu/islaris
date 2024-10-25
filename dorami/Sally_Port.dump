@@ -1,0 +1,32 @@
+0000000000000000 <sallyport_entry>:
+//@constraint: = cur_privilege Machine
+//@constraint: = misa.bits 0x800000000015312d
+   0:	30047073          	csrci	mstatus,8
+   4:	000042b7          	lui	t0,0x4
+   8:	0012829b          	addiw	t0,t0,1 # 4001 <sallyport_entry+0x4001>
+   c:	01129293          	slli	t0,t0,0x11
+  10:	fd428293          	addi	t0,t0,-44
+//@constraint: = cur_privilege Machine
+//@constraint: = x5 0x000000008001FFD4
+  14:	30529073          	csrw	mtvec,t0
+  18:	004dd2b7          	lui	t0,0x4dd
+  1c:	c4f2829b          	addiw	t0,t0,-945 # 4dcc4f <sallyport_entry+0x4dcc4f>
+  20:	00c29293          	slli	t0,t0,0xc
+  24:	cc528293          	addi	t0,t0,-827
+  28:	00d29293          	slli	t0,t0,0xd
+  2c:	d1e28293          	addi	t0,t0,-738
+//@constraint: = cur_privilege Machine
+//@constraint: = x5 0x00009B989D989D1E
+//@constraint: = pmp0cfg.bits 0x00
+//@constraint: = pmp1cfg.bits 0x00
+//@constraint: = pmp2cfg.bits 0x00
+//@constraint: = pmp3cfg.bits 0x00
+//@constraint: = pmp4cfg.bits 0x00
+//@constraint: = pmp5cfg.bits 0x00
+//@constraint: = pmp6cfg.bits 0x00
+//@constraint: = pmp7cfg.bits 0x00
+//@constraint: = mseccfg.bits 0x0000000000000007
+  30:	3a029073          	csrw	pmpcfg0,t0
+//@constraint: = PC 0x0000000080021034
+//@constraint: = ((_ extract 2 2) misa.bits) 0b1
+  34:	fcdde06f    	    j	0xfffffffffffdefcc

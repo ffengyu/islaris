@@ -116,4 +116,65 @@ Section sys_regs.
     simpl. iModIntro. rewrite -(right_id True%I _ (reg_col sys_regs)).
     iRevert "H". repeat liAStep; liShow.
   Qed.
+
+Definition dorami_sys_regs := [
+  (KindReg "rv_enable_zfinx", ExactShape (RVal_Bool false));
+  (KindReg "rv_pmp_count", ExactShape (RegVal_I 16 64));
+  (KindReg "rv_pmp_grain", ExactShape (RegVal_I 10 64));
+  (KindReg "rv_enable_misaligned_access" , ExactShape (RVal_Bool false));
+  (KindReg "rv_ram_base" , ExactShape (RVal_Bits (BV 64 0x0000000080000000)));
+  (KindReg "rv_ram_size" , ExactShape (RVal_Bits (BV 64 0x0000000004000000)));
+  (KindReg "rv_rom_base" , ExactShape (RVal_Bits (BV 64 0x0000000000001000)));
+  (KindReg "rv_rom_size" , ExactShape (RVal_Bits (BV 64 0x0000000000000100)));
+  (KindReg "rv_clint_base" , ExactShape (RVal_Bits (BV 64 0x0000000002000000)));
+  (KindReg "rv_clint_size" , ExactShape (RVal_Bits (BV 64 0x00000000000c0000)));
+  (KindReg "rv_htif_tohost" , ExactShape (RVal_Bits (BV 64 0x0000000040001000)));
+  (KindReg "cur_privilege" , ExactShape (RVal_Enum "Machine"));
+  (* TODO: remove this *)
+  (KindReg "Machine" , ExactShape (RVal_Enum "Machine"));
+  (KindReg "mseccfg", ExactShape (RegVal_Struct [("bits", RVal_Bits (BV 64 0x07))]));
+  (KindReg "misa" , ExactShape (RegVal_Struct [("bits", RVal_Bits misa_bits)]))
+].
+
+Definition part_machine_csr (regs: list (bv 64)) :=
+  match regs with
+  | satp :: mcause :: mepc :: nil => [
+  (KindReg "satp" , ExactShape (RVal_Bits satp));
+  (KindReg "mcause", StructShape [("bits", ExactShape (RVal_Bits mcause))]);
+  (KindReg "mepc", ExactShape (RVal_Bits mepc)) ]
+  | _ => nil end.
+
+Definition machine_csr (regs: list (bv 64)) :=
+  match regs with
+  | mstatus :: satp :: mcause :: mepc :: nil => [
+  (KindField "mstatus" "bits", ExactShape (RVal_Bits mstatus));
+  (KindReg "satp" , ExactShape (RVal_Bits satp));
+  (KindReg "mcause", StructShape [("bits", ExactShape (RVal_Bits mcause))]);
+  (KindReg "mepc", ExactShape (RVal_Bits mepc)) ]
+  | _ => nil end.
+
+Definition machine_gpr (regs: list (bv 64)) :=
+  match regs with
+  | x0::x1::x5::x10::x11::nil => [
+  (KindReg "x0", ExactShape (RVal_Bits x0));
+  (KindReg "x1", ExactShape (RVal_Bits x1));
+  (KindReg "x5", ExactShape (RVal_Bits x5));
+  (KindReg "x10", ExactShape (RVal_Bits x10));
+  (KindReg "x11", ExactShape (RVal_Bits x11)) ]
+  | _ => nil end.
+
+Definition uni_gpr := [
+  (KindReg "x0", BitsShape 64);
+  (KindReg "x1", BitsShape 64);
+  (KindReg "x5", BitsShape 64);
+  (KindReg "x10", BitsShape 64);
+  (KindReg "x11", BitsShape 64)
+].
+
+Definition uni_csr := [
+  (KindReg "satp" , BitsShape 64);
+  (KindReg "mcause", StructShape [("bits", BitsShape 64)]);
+  (KindReg "mepc", BitsShape 64)
+].
+
 End sys_regs.

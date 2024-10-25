@@ -89,11 +89,32 @@ Lemma memcpy_loop `{!islaG Σ} `{!threadG} :
   instr 0x0000000010300010 (Some a10) -∗
   instr 0x0000000010300014 (Some a14) -∗
   instr 0x0000000010300018 (Some a18) -∗
-  □ instr_pre 0x0000000010300004 memcpy_loop_spec -∗
   instr_body 0x0000000010300004 memcpy_loop_spec.
 Proof.
 (*PROOF_START*)
   iStartProof.
+  do 1000 liAStep; liShow.
+  do 100 liAStep; liShow.
+  do 60 liAStep; liShow.
+  liAStep; liShow.
+  liAStep; liShow.
+  liAStep; liShow.
+  liAStep; liShow.
+  liAStep; liShow.
+  liAStep; liShow.
+  liAStep; liShow.
+  liAStep; liShow.
+  liAStep; liShow.
+  liAStep; liShow.
+  liAStep; liShow.
+  liAStep; liShow.
+  liAStep; liShow.
+  liAStep; liShow.
+  liAStep; liShow.
+  liAStep; liShow.
+  liAStep; liShow.
+  liAStep; liShow.
+  liAStep; liShow.
   liARun.
   liInst (λ x, x.1ₗ = (S i)).
   liARun.

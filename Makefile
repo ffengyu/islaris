@@ -17,12 +17,24 @@ update_etc:
 	@dune build _build/install/default/etc/islaris/riscv64_isla_coq.toml
 .PHONY: update_etc
 
+generate_dorami: update_etc
+	@echo "[islaris] dorami/P2F.dump"
+	@PATH=$$PWD/bin:$$PATH dune exec -- islaris dorami/P2F.dump -j 8 -o dorami/instructions/P2F --coqdir=isla.dorami.instructions.P2F --arch=riscv64
+	@echo "[islaris] dorami/exit_firmware.dump"
+	@PATH=$$PWD/bin:$$PATH dune exec -- islaris dorami/exit_firmware.dump -j 8 -o dorami/instructions/exit_firmware --coqdir=isla.dorami.instructions.exit_firmware --arch=riscv64
+	@echo "[islaris] dorami/Sally_Port.dump"
+	@PATH=$$PWD/bin:$$PATH dune exec -- islaris dorami/Sally_Port.dump -j 8 -o dorami/instructions/Sally_Port --coqdir=isla.dorami.instructions.Sally_Port --arch=riscv64
+	@echo "[islaris] dorami/P_entry.dump"
+	@PATH=$$PWD/bin:$$PATH dune exec -- islaris dorami/P_entry.dump -j 8 -o dorami/instructions/P_entry --coqdir=isla.dorami.instructions.P_entry --arch=riscv64
+
 generate_test: update_etc
+#	@echo "[islaris] examples/test.dump"
+#	@PATH=$$PWD/bin:$$PATH dune exec -- islaris examples/test.dump -j 8 -o instructions/test --coqdir=isla.instructions.test --arch=riscv64
 	@echo "[islaris] examples/add.dump"
 	@PATH=$$PWD/bin:$$PATH dune exec -- islaris examples/add.dump -j 8 -o instructions/add --coqdir=isla.instructions.add --arch=riscv64
 .PHONY: generate_test
 
-own_test:
+my_test:
 	@dune build examples/add.vo --display short
 .PHONY: own_test
 

@@ -169,9 +169,10 @@ Proof. destruct rk1, rk2 => //=; rewrite !String_eqb_eq; repeat case_bool_decide
 (* YIQUN: *)
 (* Except ExactShape is about the syntactic property, other shapes says *)
 (* that the valu satis some properties semantically. *)
-(* valu is shape of MaskShape when value before has value n and after being *)
-(* masked has value v. *)
+(* valu is shape of MaskShape when value is bit length n and v' if masked *)
+(* with m. *)
 (* valu has PropShape when P v is provable. *)
+(* BitsShape is reg is bitstring of length n *)
 Inductive valu_shape :=
 | ExactShape (v : valu)
 | StructShape (ss : list (string * valu_shape))

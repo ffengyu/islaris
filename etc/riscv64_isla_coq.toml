@@ -34,10 +34,14 @@ top = "0x80410000"
 stride = "0x10"
 
 [registers.defaults]
+rv_enable_zfinx = false
 rv_enable_writable_misa = true
 rv_enable_rvc = true
 rv_enable_fdext = false
-rv_enable_pmp = false
+rv_pmp_count = "16"
+rv_pmp_grain = "10"
+# Add support
+# rv_enable_smepmp = false
 rv_enable_dirty_update = false
 rv_enable_misaligned_access = false
 rv_mtval_has_illegal_inst_bits = false

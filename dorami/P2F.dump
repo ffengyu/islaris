@@ -13,13 +13,13 @@
   24:	81e28293          	addi	t0,t0,-2018
 //@constraint: = cur_privilege Machine
 //@constraint: = x5 0x0000989B989D981E
-//@constraint: = pmp0cfg.bits 0x00
-//@constraint: = pmp1cfg.bits 0x00
-//@constraint: = pmp2cfg.bits 0x00
-//@constraint: = pmp3cfg.bits 0x00
-//@constraint: = pmp4cfg.bits 0x00
-//@constraint: = pmp5cfg.bits 0x00
+//@constraint: = pmp0cfg.bits 0x1E
+//@constraint: = pmp1cfg.bits 0x9D
+//@constraint: = pmp2cfg.bits 0x98
+//@constraint: = pmp3cfg.bits 0x98
+//@constraint: = pmp4cfg.bits 0x98
+//@constraint: = pmp5cfg.bits 0x9B
 //@constraint: = pmp6cfg.bits 0x00
 //@constraint: = pmp7cfg.bits 0x00
 //@constraint: = mseccfg.bits 0x0000000000000007
-  28:	3a029073          	csrw	pmpcfg0,t0
+  28:	3a029073          	csrw	pmpcfg0,0

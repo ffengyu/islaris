@@ -1,0 +1,12 @@
+0000000000000000 <.text>:
+//@constraint: = cur_privilege Machine
+//@constraint: = pmp0cfg.bits 0x1e
+//@constraint: = pmp1cfg.bits 0x98
+//@constraint: = pmp2cfg.bits 0x9d
+//@constraint: = pmp3cfg.bits 0x98
+//@constraint: = pmp4cfg.bits 0x9b
+//@constraint: = pmp5cfg.bits 0x98
+//@constraint: = pmp6cfg.bits 0x00
+//@constraint: = pmp7cfg.bits 0x00
+//@constraint: = mseccfg.bits 0x0000000000000007
+   0:	3a005073          	csrwi	pmpcfg0,0

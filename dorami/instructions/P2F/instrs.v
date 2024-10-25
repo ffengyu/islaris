@@ -22,5 +22,5 @@ Definition instr_map := [
   (0x1c%Z, a1c (* addi t0,t0,1261 *));
   (0x20%Z, a20 (* slli t0,t0,0xd *));
   (0x24%Z, a24 (* addi t0,t0,-2018 *));
-  (0x28%Z, a28 (* csrw pmpcfg0,t0 *))
+  (0x28%Z, a28 (* csrw pmpcfg0,0 *))
 ].
