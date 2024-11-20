@@ -684,13 +684,14 @@ Definition FindInstrKind {Σ} `{!Arch} `{!islaG Σ} `{!threadG} (a : Z) (l : boo
 Global Typeclasses Opaque FindInstrKind.
 
 Inductive reg_mapsto_kind : Type :=
-| RKMapsTo (v : valu) | RKCol (regs : list (reg_kind * valu_shape)).
+| RKMapsTo (v : valu) | RKCol (regs : list (reg_kind * valu_shape)) | RKMapsToStruct (idx: nat) (v : valu) (fvs: list (sail_name * valu)).
 Definition FindRegMapsTo {Σ} `{!islaG Σ} `{!threadG} (r : string) := {|
   fic_A := reg_mapsto_kind;
   fic_Prop rk :=
   match rk with
   | RKMapsTo v => (r ↦ᵣ v)%I
   | RKCol regs => reg_col regs
+  | RKMapsToStruct _ _ _ => False%I
   end
 |}.
 Global Typeclasses Opaque FindRegMapsTo.
@@ -700,6 +701,7 @@ Definition FindStructRegMapsTo {Σ} `{!islaG Σ} `{!threadG} (r f : string) := {
   match rk with
   | RKMapsTo v => (r # f ↦ᵣ v)%I
   | RKCol regs => reg_col regs
+  | RKMapsToStruct idx v fvs => (⌜list_find (λ v, v.1 = f) fvs = Some (idx, (f, v))⌝ ∗ r ↦ᵣ RegVal_Struct fvs)%I
   end
 |}.
 Global Typeclasses Opaque FindStructRegMapsTo.
@@ -847,6 +849,15 @@ Section instances.
   Definition find_in_context_struct_reg_mapsto_inst :=
     [instance find_in_context_struct_reg_mapsto with FICSyntactic].
   Global Existing Instance find_in_context_struct_reg_mapsto_inst | 1.
+
+  Lemma find_in_context_reg_mapstostruct r f T:
+    (∃ idx fvs v,  r ↦ᵣ RegVal_Struct fvs ∗ ⌜list_find (λ v, v.1 = f) fvs = Some (idx, (f, v))⌝ ∗ T (RKMapsToStruct idx v fvs))
+    ⊢ find_in_context (FindStructRegMapsTo r f) T.
+  Proof. iDestruct 1 as (???) "(H1 & %H2 & H3)". iExists _.
+         iSplitR "H3"; last done. simpl. by iFrame. Qed.
+  Definition find_in_context_reg_mapstostruct_inst :=
+    [instance find_in_context_reg_mapstostruct with FICSyntactic].
+  Global Existing Instance find_in_context_reg_mapsto_inst | 5.
 
   Lemma find_in_context_struct_reg_mapsto_col r f T:
     (∃ regs, reg_col regs ∗ T (RKCol regs))
@@ -996,6 +1007,7 @@ Section instances.
       | RKCol regs =>
           (li_tactic (regcol_compute_hint (regcol_extract (KindReg r)) regs) (λ '(s, regs'),
             ∀ v', ⌜valu_has_shape v' s⌝ -∗ reg_col regs' -∗ P v'))
+      | RKMapsToStruct _ _ _  => False
       end)
     ⊢ r ↦ᵣ: P.
   Proof.
@@ -1006,6 +1018,7 @@ Section instances.
     - iDestruct "Hwp" as ([??] ?) "HG"; simplify_eq/=.
       iDestruct (regcol_extract_Some with "Hr") as (??) "[? Hregs]"; [done|] => /=.
       iDestruct ("HG" with "[//] Hregs") as "HG"; simplify_eq/=. iExists _. by iFrame.
+    - done.
   Qed.
 
   Lemma struct_reg_mapsto_pred_intro r f P :
@@ -1015,6 +1028,7 @@ Section instances.
       | RKCol regs =>
           (li_tactic (regcol_compute_hint (regcol_extract (KindField r f)) regs) (λ '(s, regs'),
             ∀ v', ⌜valu_has_shape v' s⌝ -∗ reg_col regs' -∗ P v'))
+      | RKMapsToStruct _ _ _ => False
       end)
     ⊢ r # f ↦ᵣ: P.
   Proof.
@@ -1025,6 +1039,7 @@ Section instances.
     - iDestruct "Hwp" as ([??] ?) "HG"; simplify_eq/=.
       iDestruct (regcol_extract_Some with "Hr") as (??) "[? Hregs]"; [done|] => /=.
       iDestruct ("HG" with "[//] Hregs") as "HG"; simplify_eq/=. iExists _. by iFrame.
+    - done.
   Qed.
 
   Lemma simpl_hyp_reg_pred r P G:
@@ -1269,6 +1284,7 @@ Section instances.
       | RKCol regs =>
           (li_tactic (regcol_compute_hint (regcol_lookup (KindReg r)) regs) (λ '(_, s),
              ∀ v', ⌜valu_has_shape v' s⌝ -∗ reg_col regs -∗ Φ v'))
+      | RKMapsToStruct _ _ _ => False
       end))
     ⊢ WPreadreg r @ [] {{ Φ }}.
   Proof.
@@ -1279,6 +1295,7 @@ Section instances.
       iDestruct (reg_col_lookup with "Hr") as (vact ?) "[Hr Hregs]"; [done|] => /=.
       iApply (read_reg_nil with "Hr").  iIntros "Hr". iApply "Hwp"; [done|].
       iApply reg_col_lookup; [done|]. iExists _. by iFrame.
+    - done.
   Qed.
 
   Lemma li_wpreadreg_field r f Φ:
@@ -1288,6 +1305,7 @@ Section instances.
       | RKCol regs =>
           (li_tactic (regcol_compute_hint (regcol_lookup_field r f) regs) (λ '(_, s),
              ∀ v', ⌜valu_has_shape v' s⌝ -∗ reg_col regs -∗ Φ v'))
+      | RKMapsToStruct _ v' fvs => r ↦ᵣ RegVal_Struct fvs -∗ Φ v'
       end))
     ⊢ WPreadreg r @ [Field f] {{ Φ }}.
   Proof.
@@ -1300,6 +1318,13 @@ Section instances.
       + iApply (read_reg_struct with "Hr"). iIntros "Hr". iApply ("Hwp" with "[//]"). by iApply "Hregs".
       + iDestruct "Hr" as "[Hr %]". iApply (read_reg_acc with "Hr"); [done..|].
         iIntros "Hr". iApply ("Hwp" with "[//]"). iApply "Hregs". by iFrame.
+    - iDestruct "Hr" as "[%Hfvs Hr]".
+      iApply (read_reg_acc with "Hr").
+      {
+        rewrite /read_accessor /= list_find_idx_list_find Hfvs /=.
+        apply list_find_Some in Hfvs.
+        by destruct Hfvs as (->&?&?). }
+      done.
   Qed.
 
   Lemma li_wp_read_reg r v ann es :
@@ -1309,6 +1334,7 @@ Section instances.
       | RKCol regs =>
           (li_tactic (regcol_compute_hint (regcol_lookup (KindReg r)) regs) (λ '(_, s),
              reg_col regs -∗ ⌜valu_has_shape v s⌝ -∗ WPasm es))
+      | RKMapsToStruct _ _ _ => False
       end))
     ⊢ WPasm (ReadReg r [] v ann :t: es).
   Proof.
@@ -1318,6 +1344,7 @@ Section instances.
     - iIntros "? %". by iApply "HG".
     - iDestruct "HG" as ([??]?) "HG"; simplify_eq/=. unfold li_tactic, regcol_compute_hint.
       iExists (_, _). iSplit; [done|]. iIntros (??) "? %". subst. by iApply ("HG" with "[$]").
+    - done.
   Qed.
 
   Lemma li_wp_read_reg_struct r f v ann es :
@@ -1327,6 +1354,7 @@ Section instances.
       | RKMapsTo v' => (⌜vread = v'⌝ -∗ r # f ↦ᵣ v' -∗ WPasm es)
       | RKCol regs => li_tactic (regcol_compute_hint (regcol_lookup_field r f) regs) (λ '(b, s),
              ⌜valu_has_shape vread s⌝ -∗ reg_col regs -∗ WPasm es)
+      | RKMapsToStruct _ v' fvs => (⌜vread = v'⌝ -∗ r ↦ᵣ RegVal_Struct fvs -∗ WPasm es)
       end)))
     ⊢ WPasm (ReadReg r [Field f] v ann :t: es).
   Proof.
@@ -1336,6 +1364,7 @@ Section instances.
     - iIntros "? %". by iApply "HG".
     - iDestruct "HG" as ([??]?) "HG"; simplify_eq/=. unfold li_tactic, regcol_compute_hint.
       iExists (_, _). iSplit; [done|]. iIntros (??) "? %". subst. by iApply ("HG" with "[] [$]").
+    - iIntros "? %". by iApply "HG".
   Qed.
 
   Lemma li_wp_assume_reg r v ann es :
@@ -1355,6 +1384,7 @@ Section instances.
       | RKCol regs =>
           (li_tactic (regcol_compute_hint (regcol_lookup (KindReg r)) regs) (λ '(_, s),
              ⌜∀ v', valu_has_shape v' s → v' = v⌝ ∗ (reg_col regs -∗ WPasm es)))
+      | RKMapsToStruct _ _ _ => False
       end))
     ⊢ WPasm (AssumeReg r [] v ann :t: es).
   Proof.
@@ -1364,6 +1394,7 @@ Section instances.
     - iDestruct "HG" as (?) "HG". iIntros "?". iSplit; [done|]. by iApply "HG".
     - iDestruct "HG" as ([??]??) "HG"; simplify_eq/=. unfold li_tactic, regcol_compute_hint.
       iExists (_, _). iSplit; [done|]. iIntros (??) "?". iSplit; [naive_solver|]. by iApply ("HG" with "[$]").
+    - done.
   Qed.
 
   Lemma li_wp_assume_reg_struct r f v ann es :
@@ -1372,6 +1403,7 @@ Section instances.
       | RKMapsTo v' => ⌜v = v'⌝ ∗ (r # f ↦ᵣ v' -∗ WPasm es)
       | RKCol regs => li_tactic (regcol_compute_hint (regcol_lookup_field r f) regs) (λ '(b, s),
           if s is ExactShape v' then ⌜v = v'⌝ ∗ (reg_col regs -∗ WPasm es) else False)
+      | RKMapsToStruct _ v' fvs => (⌜v = v'⌝ ∗ (r ↦ᵣ RegVal_Struct fvs -∗ WPasm es))
       end)))
     ⊢ WPasm (AssumeReg r [Field f] v ann :t: es).
   Proof.
@@ -1382,6 +1414,7 @@ Section instances.
     - iDestruct "HG" as ([??]?) "HG"; simplify_eq/=. unfold li_tactic, regcol_compute_hint.
       iExists (_, _). iSplit; [done|]. iIntros (??) "?". case_match => //. iDestruct "HG" as (?) "HG"; subst.
       iSplit; [naive_solver|]. by iApply ("HG" with "[$]").
+    - iDestruct "HG" as (?) "HG". iIntros "?". iSplit; [done|]. by iApply "HG".
   Qed.
 
   Lemma li_wp_write_reg r v ann es:
@@ -1394,6 +1427,7 @@ Section instances.
            TODO: find a more principled solution. *)
           (li_tactic (regcol_compute_hint (regcol_lookup (KindReg r)) regs) (λ '(i, s),
              r ↦ᵣ v -∗ reg_col (delete i regs) -∗ WPasm es))
+      | RKMapsToStruct _ _ _ => False
       end))
     ⊢ WPasm (WriteReg r [] v ann :t: es).
   Proof.
@@ -1403,6 +1437,7 @@ Section instances.
     - iDestruct "Hwp" as ([??] ?%regcol_lookup_Some) "Hwp"; simplify_eq/=.
       iDestruct (reg_col_lookup with "Hr") as (??) "[Hr Hregs]"; [done|] => /=.
       iApply (wp_write_reg with "Hr"). iIntros "Hr". iApply ("Hwp" with "[$] [$]").
+    - done.
   Qed.
 
   Lemma li_wp_write_reg_struct r f v ann es:
@@ -1416,6 +1451,7 @@ Section instances.
            TODO: find a more principled solution. *)
           (li_tactic (regcol_compute_hint (regcol_lookup (KindField r f)) regs) (λ '(i, s),
              r # f ↦ᵣ vnew -∗ reg_col (delete i regs) -∗ WPasm es))
+      | RKMapsToStruct idx v' fvs => (r ↦ᵣ RegVal_Struct (<[idx:=(f, vnew)]> fvs) -∗ WPasm es)
       end)))
     ⊢ WPasm (WriteReg r [Field f] v ann :t: es).
   Proof.
@@ -1425,6 +1461,14 @@ Section instances.
     - iDestruct "Hwp" as ([??] ?%regcol_lookup_Some) "Hwp"; simplify_eq/=.
       iDestruct (reg_col_lookup with "Hr") as (??) "[Hr Hregs]"; [done|] => /=.
       iApply (wp_write_reg_struct with "Hr"); [done|]. iIntros "Hr". iApply ("Hwp" with "[$] [$]").
+    - iDestruct "Hr" as "[%Hfvs Hr]".
+      iApply (wp_write_reg_acc with "Hr").
+      + apply H1.
+      + rewrite /write_accessor /=.
+        rewrite list_find_idx_list_find Hfvs /=.
+        apply list_find_Some in Hfvs.
+        by destruct Hfvs as (->&?&?).
+      + done.
   Qed.
 
   Lemma li_wp_branch_address v ann es:
@@ -1575,6 +1619,7 @@ Section instances.
           li_tactic (regcol_compute_hint (regcol_lookup (KindReg r)) regs) (λ '(_, s),
            ∀ v, ⌜valu_has_shape v s⌝ -∗ ∃ v', ⌜v = RegVal_Base v'⌝ ∗ (reg_col regs -∗ Φ v')
              )
+      | RKMapsToStruct _ _ _ => False
       end))
     ⊢ WPaexp (AExp_Val (AVal_Var r []) ann) {{ Φ }}.
   Proof.
@@ -1585,14 +1630,17 @@ Section instances.
     - iDestruct "HG" as ([??]?) "HG"; simplify_eq/=. unfold li_tactic, regcol_compute_hint.
       iExists (_, _). iSplit; [done|]. iIntros (??) "?".
       iDestruct ("HG" with "[//]") as (??) "HG"; subst. by iApply "HG".
+    - done.
   Qed.
 
+  (*TODO: read struct*)
   Lemma li_wpae_var_struct r f Φ ann :
     (find_in_context (FindStructRegMapsTo r f) (λ rk,
       match rk with
       | RKMapsTo v => (if v is RegVal_Base v' then r # f ↦ᵣ v -∗ Φ v' else False)
       | RKCol regs => li_tactic (regcol_compute_hint (regcol_lookup_field r f) regs) (λ '(b, s),
            ∀ v, ⌜valu_has_shape v s⌝ -∗ if v is RegVal_Base v' then (reg_col regs -∗ Φ v') else False)
+      | RKMapsToStruct _ _ _ => False
       end))
     ⊢ WPaexp (AExp_Val (AVal_Var r [Field f]) ann) {{ Φ }}.
   Proof.
@@ -1603,6 +1651,7 @@ Section instances.
     - iDestruct "HG" as ([??]?) "HG"; simplify_eq/=. unfold li_tactic, regcol_compute_hint.
       iExists (_, _). iSplit; [done|]. iIntros (??) "?".
       iDestruct ("HG" with "[//]") as "HG". case_match => //. by iApply "HG".
+    - done.
   Qed.
 
   Lemma li_wpae_bits b Φ ann:

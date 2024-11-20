@@ -1,0 +1,129 @@
+0000000000000000 <sallyport_entry>:
+//@constraint: = cur_privilege Machine
+//@constraint: = misa.bits 0x800000000015312d
+//@constraint: = pmp0cfg.bits 0x00
+//@constraint: = pmp1cfg.bits 0x00
+//@constraint: = pmp2cfg.bits 0x00
+//@constraint: = pmp3cfg.bits 0x00
+//@constraint: = pmp4cfg.bits 0x00
+//@constraint: = pmp5cfg.bits 0x00
+//@constraint: = pmp6cfg.bits 0x00
+//@constraint: = pmp7cfg.bits 0x00
+//@constraint: = mseccfg.bits 0x0000000000000007
+   0:	30047073          	csrci	mstatus,8
+//@constraint: = pmp0cfg.bits 0x00
+//@constraint: = pmp1cfg.bits 0x00
+//@constraint: = pmp2cfg.bits 0x00
+//@constraint: = pmp3cfg.bits 0x00
+//@constraint: = pmp4cfg.bits 0x00
+//@constraint: = pmp5cfg.bits 0x00
+//@constraint: = pmp6cfg.bits 0x00
+//@constraint: = pmp7cfg.bits 0x00
+//@constraint: = mseccfg.bits 0x0000000000000007
+   4:	0010029b          	addiw	t0,zero,1
+//@constraint: = pmp0cfg.bits 0x00
+//@constraint: = pmp1cfg.bits 0x00
+//@constraint: = pmp2cfg.bits 0x00
+//@constraint: = pmp3cfg.bits 0x00
+//@constraint: = pmp4cfg.bits 0x00
+//@constraint: = pmp5cfg.bits 0x00
+//@constraint: = pmp6cfg.bits 0x00
+//@constraint: = pmp7cfg.bits 0x00
+//@constraint: = mseccfg.bits 0x0000000000000007
+   8:	01f29293          	slli	t0,t0,0x1f
+//@constraint: = cur_privilege Machine
+//@constraint: = x5 0x0000000080000000
+//@constraint: = pmp0cfg.bits 0x00
+//@constraint: = pmp1cfg.bits 0x00
+//@constraint: = pmp2cfg.bits 0x00
+//@constraint: = pmp3cfg.bits 0x00
+//@constraint: = pmp4cfg.bits 0x00
+//@constraint: = pmp5cfg.bits 0x00
+//@constraint: = pmp6cfg.bits 0x00
+//@constraint: = pmp7cfg.bits 0x00
+//@constraint: = mseccfg.bits 0x0000000000000007
+   c:	30529073          	csrw	mtvec,t0
+//@constraint: = pmp0cfg.bits 0x00
+//@constraint: = pmp1cfg.bits 0x00
+//@constraint: = pmp2cfg.bits 0x00
+//@constraint: = pmp3cfg.bits 0x00
+//@constraint: = pmp4cfg.bits 0x00
+//@constraint: = pmp5cfg.bits 0x00
+//@constraint: = pmp6cfg.bits 0x00
+//@constraint: = pmp7cfg.bits 0x00
+//@constraint: = mseccfg.bits 0x0000000000000007
+  10:	004dd2b7          	lui	t0,0x4dd
+//@constraint: = pmp0cfg.bits 0x00
+//@constraint: = pmp1cfg.bits 0x00
+//@constraint: = pmp2cfg.bits 0x00
+//@constraint: = pmp3cfg.bits 0x00
+//@constraint: = pmp4cfg.bits 0x00
+//@constraint: = pmp5cfg.bits 0x00
+//@constraint: = pmp6cfg.bits 0x00
+//@constraint: = pmp7cfg.bits 0x00
+//@constraint: = mseccfg.bits 0x0000000000000007
+  14:	c4f2829b          	addiw	t0,t0,-945 # 4dcc4f <sallyport_entry+0x4dcc4f>
+//@constraint: = pmp0cfg.bits 0x00
+//@constraint: = pmp1cfg.bits 0x00
+//@constraint: = pmp2cfg.bits 0x00
+//@constraint: = pmp3cfg.bits 0x00
+//@constraint: = pmp4cfg.bits 0x00
+//@constraint: = pmp5cfg.bits 0x00
+//@constraint: = pmp6cfg.bits 0x00
+//@constraint: = pmp7cfg.bits 0x00
+//@constraint: = mseccfg.bits 0x0000000000000007
+  18:	00c29293          	slli	t0,t0,0xc
+//@constraint: = pmp0cfg.bits 0x00
+//@constraint: = pmp1cfg.bits 0x00
+//@constraint: = pmp2cfg.bits 0x00
+//@constraint: = pmp3cfg.bits 0x00
+//@constraint: = pmp4cfg.bits 0x00
+//@constraint: = pmp5cfg.bits 0x00
+//@constraint: = pmp6cfg.bits 0x00
+//@constraint: = pmp7cfg.bits 0x00
+//@constraint: = mseccfg.bits 0x0000000000000007
+  1c:	cc528293          	addi	t0,t0,-827
+//@constraint: = pmp0cfg.bits 0x00
+//@constraint: = pmp1cfg.bits 0x00
+//@constraint: = pmp2cfg.bits 0x00
+//@constraint: = pmp3cfg.bits 0x00
+//@constraint: = pmp4cfg.bits 0x00
+//@constraint: = pmp5cfg.bits 0x00
+//@constraint: = pmp6cfg.bits 0x00
+//@constraint: = pmp7cfg.bits 0x00
+//@constraint: = mseccfg.bits 0x0000000000000007
+  20:	00d29293          	slli	t0,t0,0xd
+//@constraint: = pmp0cfg.bits 0x00
+//@constraint: = pmp1cfg.bits 0x00
+//@constraint: = pmp2cfg.bits 0x00
+//@constraint: = pmp3cfg.bits 0x00
+//@constraint: = pmp4cfg.bits 0x00
+//@constraint: = pmp5cfg.bits 0x00
+//@constraint: = pmp6cfg.bits 0x00
+//@constraint: = pmp7cfg.bits 0x00
+//@constraint: = mseccfg.bits 0x0000000000000007
+  24:	d1e28293          	addi	t0,t0,-738
+//@constraint: = cur_privilege Machine
+//@constraint: = x5 0x00009B989D989D1E
+//@constraint: = pmp0cfg.bits 0x00
+//@constraint: = pmp1cfg.bits 0x00
+//@constraint: = pmp2cfg.bits 0x00
+//@constraint: = pmp3cfg.bits 0x00
+//@constraint: = pmp4cfg.bits 0x00
+//@constraint: = pmp5cfg.bits 0x00
+//@constraint: = pmp6cfg.bits 0x00
+//@constraint: = pmp7cfg.bits 0x00
+//@constraint: = mseccfg.bits 0x0000000000000007
+  28:	3a029073          	csrw	pmpcfg0,t0
+//@constraint: = pmp0cfg.bits 0x1E
+//@constraint: = pmp1cfg.bits 0x9D
+//@constraint: = pmp2cfg.bits 0x98
+//@constraint: = pmp3cfg.bits 0x9D
+//@constraint: = pmp4cfg.bits 0x98
+//@constraint: = pmp5cfg.bits 0x9B
+//@constraint: = pmp6cfg.bits 0x00
+//@constraint: = pmp7cfg.bits 0x00
+//@constraint: = mseccfg.bits 0x0000000000000007
+//@constraint: = PC 0x000000008002102c
+//@constraint: = ((_ extract 2 2) misa.bits) 0b1
+  2c:	fd5de06f    	      jal zero,0xfffffffffffdefd4

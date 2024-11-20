@@ -1,0 +1,6 @@
+(coq.theory
+ (name isla.dorami.verification)
+ (package islaris)
+ (flags :standard -w -notation-overridden -w -redundant-canonical-projection)
+ (synopsis "Generated file")
+ (theories isla isla.aarch64 isla.dorami.instructions))

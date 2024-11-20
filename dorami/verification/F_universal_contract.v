@@ -1,457 +1,5 @@
-Require Import isla.riscv64.riscv64.
-Require isla.dorami.instructions.P2F.instrs.
-Require isla.dorami.instructions.exit_firmware.instrs.
-Require isla.dorami.instructions.Sally_Port.instrs.
-Require isla.dorami.instructions.P_entry.instrs.
-
-(* PMP grain and pmp addr mode *)
-(* | REGION       | ADDRESS    | LEN              | *)
-(* |--------------|------------|------------------| *)
-(* | DEVICE       | 0x00000000 | 0x80000000(2^31) | *)
-(* | P/CODE       | 0x80000000 | 0x20000(2^17)    | *)
-(* | F/CODE       | 0x80020000 | 0x1000(2^12)     | *)
-(* | SP/CODE      | 0x80021000 | 0x1000(2^12)     | *)
-(* | F/DATA       | 0x80022000 | 0x1000(2^12)     | *)
-(* | P/DATA       | 0x80040000 | 0x20000(2^17)    | *)
-(* | SP/CODE      | 0x80021000 | 0x1000(2^12)     | *)
-Definition device_addr := (BV 64 0x00000000).
-Definition P_code_addr := (BV 64 0x80000000).
-Definition F_code_addr := (BV 64 0x80020000).
-Definition F_code_end_addr := (BV 64 0x80020ffc).
-Definition SP_code_addr := (BV 64 0x80021000).
-Definition F_data_addr := (BV 64 0x80022000).
-Definition P_data_addr := (BV 64 0x80040000).
-
-Definition device_pmpaddr := (BV 64 0x7ffffff).
-Definition P_code_pmpaddr := (BV 64 0x80001fff).
-Definition F_code_pmpaddr := (BV 64 0x800200ff).
-Definition SP_code_pmpaddr := (BV 64 0x800210ff).
-Definition F_data_pmpaddr := (BV 64 0x800220ff).
-Definition P_data_pmpaddr := (BV 64 0x80041fff).
-
-(* PMP cfg when monitor, or osbi, or sally port executes. *)
-(* Region [0x0, DEVICE] is S/U-mode only. *)
-(* | REGION       | MONITOR EXEC | OSBI EXEC | SP EXEC  | *)
-(* |--------------|--------------|-----------|----------| *)
-(* | DEVICE       | 1e|AAWR      | 1e|AAWR   | 0        | *)
-(* | P/CODE       | 9D|LAAXR     | 98|LAA    | 0        | *)
-(* | F/CODE       | 98|LAA       | 9d|LAAXR  | 0        | *)
-(* | SP/CODE      | 98|LAA       | 98|LAA    | 0        | *)
-(* | F/DATA       | 98|LAA       | 9b|LAAWR  | 0        | *)
-(* | P/DATA       | 9b|LAAWR     | 98|LAA    | 0        | *)
-(* | SP/CODE      | 9d|LAAXR     | 9d|LAAXR  | 9d|LAAXR | *)
-
-(* PMP configuration in pmpcfg0 when P exec. *)
-Definition device_cfg_when_P := (BV 8 0x1e).
-Definition P_code_cfg_when_P := (BV 8 0x9d).
-Definition F_code_cfg_when_P := (BV 8 0x98).
-Definition SP_code_cfg_when_P := (BV 8 0x98).
-Definition F_data_cfg_when_P := (BV 8 0x98).
-Definition P_data_cfg_when_P := (BV 8 0x9b).
-
-(* PMP configuration in pmpcfg0 when firmware exec. *)
-Definition device_cfg_when_F := (BV 8 0x1e).
-Definition P_code_cfg_when_F := (BV 8 0x98).
-Definition F_code_cfg_when_F := (BV 8 0x9d).
-Definition SP_code_cfg_when_F := (BV 8 0x98).
-Definition F_data_cfg_when_F := (BV 8 0x9b).
-Definition P_data_cfg_when_F := (BV 8 0x98).
-
-(* PMP configuration in pmpcfg0 when sallyport exec. *)
-Definition components_cfg_when_SP := (BV 8 0x00).
-(* PMP configuration in pmpcfg0 when P_entry exec. *)
-Definition SP_code_cfg_when_P_entry := (BV 8 0x9d).
-(* PMP configuration of SallyPort in pmpcfg2 *)
-Definition SP_code_cfg := (BV 8 0x9d).
-
-Definition P_mtvec := P_code_addr.
-Definition P2F_code_size := 0x2c.
-Definition P_entry_code_size := 0x1c.
-Definition P2F_code_addr := bv_sub F_code_addr (BV 64 P2F_code_size).
-Definition F_mtvec := F_code_addr.
-
-(* pmp0cfg - pmp5cfg fields in pmpcfg0 register when P exec. *)
-Definition P_pmpcfgs :=
-  [device_cfg_when_P; P_code_cfg_when_P;
-   F_code_cfg_when_P; SP_code_cfg_when_P;
-   F_data_cfg_when_P; P_data_cfg_when_P].
-
-(* pmp0cfg - pmp5cfg fields in pmpcfg0 register when F exec. *)
-Definition F_pmpcfgs :=
-  [device_cfg_when_F; P_code_cfg_when_F;
-   F_code_cfg_when_F; SP_code_cfg_when_F;
-   F_data_cfg_when_F; P_data_cfg_when_F].
-
-(* pmp0cfg - pmp5cfg fields in pmpcfg0 register when SallyPort exec. *)
-Definition SP_pmpcfgs :=
-  [components_cfg_when_SP; components_cfg_when_SP;
-   components_cfg_when_SP; components_cfg_when_SP;
-   components_cfg_when_SP; components_cfg_when_SP].
-
-(* pmp0cfg - pmp5cfg fields in pmpcfg0 register when P_entry exec. *)
-Definition P_entry_pmpcfgs :=
-  [device_cfg_when_P; P_code_cfg_when_P;
-   F_code_cfg_when_P; SP_code_cfg_when_P_entry;
-   F_data_cfg_when_P; P_data_cfg_when_P].
-
-(* PMP registers that can be any value are existential values. *)
-(* We can add more existential pmpaddr and pmpcfg *)
-(* because the PMP entries with lower number have higher priority. *)
-Definition pmp_regs := [
-  (KindReg "pmpaddr0", ExactShape (RVal_Bits device_pmpaddr));
-  (KindReg "pmpaddr1", ExactShape (RVal_Bits P_code_pmpaddr));
-  (KindReg "pmpaddr2", ExactShape (RVal_Bits F_code_pmpaddr));
-  (KindReg "pmpaddr3", ExactShape (RVal_Bits SP_code_pmpaddr));
-  (KindReg "pmpaddr4", ExactShape (RVal_Bits F_data_pmpaddr));
-  (KindReg "pmpaddr5", ExactShape (RVal_Bits P_data_pmpaddr));
-  (KindReg "pmpaddr6", ExactShape (RVal_Bits (BV 64 0)));
-  (KindReg "pmpaddr7", ExactShape (RVal_Bits (BV 64 0)));
-  (KindReg "pmpaddr8", ExactShape (RVal_Bits SP_code_pmpaddr));
-  (KindReg "pmpaddr9", BitsShape 64);
-  (KindReg "pmpaddr10", BitsShape 64);
-  (KindReg "pmpaddr11", BitsShape 64);
-  (KindReg "pmpaddr12", BitsShape 64);
-  (KindReg "pmpaddr13", BitsShape 64);
-  (KindReg "pmpaddr14", BitsShape 64);
-  (KindReg "pmpaddr15", BitsShape 64);
-  (KindReg "pmp8cfg", StructShape ([("bits", ExactShape (RVal_Bits SP_code_cfg))]));
-  (KindReg "pmp9cfg", StructShape ([("bits", BitsShape 8)]));
-  (KindReg "pmp10cfg", StructShape ([("bits", BitsShape 8)]));
-  (KindReg "pmp11cfg", StructShape ([("bits", BitsShape 8)]));
-  (KindReg "pmp12cfg", StructShape ([("bits", BitsShape 8)]));
-  (KindReg "pmp13cfg", StructShape ([("bits", BitsShape 8)]));
-  (KindReg "pmp14cfg", StructShape ([("bits", BitsShape 8)]));
-  (KindReg "pmp15cfg", StructShape ([("bits", BitsShape 8)]))
-    ].
-
-(* All the configurations don't change *)
-Definition dorami_sys_regs := [
-  (KindReg "rv_enable_zfinx", ExactShape (RVal_Bool false));
-  (KindReg "rv_pmp_count", ExactShape (RegVal_I 16 64));
-  (KindReg "rv_pmp_grain", ExactShape (RegVal_I 10 64));
-  (KindReg "rv_enable_misaligned_access" , ExactShape (RVal_Bool false));
-  (KindReg "rv_ram_base" , ExactShape (RVal_Bits (BV 64 0x0000000080000000)));
-  (KindReg "rv_ram_size" , ExactShape (RVal_Bits (BV 64 0x0000000004000000)));
-  (KindReg "rv_rom_base" , ExactShape (RVal_Bits (BV 64 0x0000000000001000)));
-  (KindReg "rv_rom_size" , ExactShape (RVal_Bits (BV 64 0x0000000000000100)));
-  (KindReg "rv_clint_base" , ExactShape (RVal_Bits (BV 64 0x0000000002000000)));
-  (KindReg "rv_clint_size" , ExactShape (RVal_Bits (BV 64 0x00000000000c0000)));
-  (KindReg "rv_htif_tohost" , ExactShape (RVal_Bits (BV 64 0x0000000040001000)));
-  (KindReg "cur_privilege" , ExactShape (RVal_Enum "Machine"));
-  (* TODO: remove this *)
-  (KindReg "Machine" , ExactShape (RVal_Enum "Machine"));
-  (KindReg "mseccfg", ExactShape (RegVal_Struct [("bits", RVal_Bits (BV 64 0x07))]));
-  (KindReg "misa" , ExactShape (RegVal_Struct [("bits", RVal_Bits misa_bits)]))
-].
-
-(* All CSR *)
-Definition machine_csr (regs: list (bv 64)) :=
-  match regs with
-  | mstatus :: satp :: mcause :: mepc :: nil => [
-  (KindReg "mstatus", StructShape [("bits", ExactShape (RVal_Bits mstatus))]);
-  (KindReg "satp" , ExactShape (RVal_Bits satp));
-  (KindReg "mcause", StructShape [("bits", ExactShape (RVal_Bits mcause))]);
-  (KindReg "mepc", ExactShape (RVal_Bits mepc)) ]
-  | _ => nil end.
-
-(* All CSR with exitential values, used in the universal contract of F. *)
-(* TODO: remove it  *)
-Definition uni_csr := [
-  (KindReg "mstatus", StructShape [("bits", BitsShape 64)]);
-  (KindReg "satp" , BitsShape 64);
-  (KindReg "mcause", StructShape [("bits", BitsShape 64)]);
-  (KindReg "mepc", BitsShape 64)
-].
-
-(* All GPR *)
-Definition machine_gpr (regs: list (bv 64)) :=
-  match regs with
-  | x0::x1::x5::x10::x11::nil => [
-  (KindReg "x0", ExactShape (RVal_Bits x0));
-  (KindReg "x1", ExactShape (RVal_Bits x1));
-  (KindReg "x5", ExactShape (RVal_Bits x5));
-  (KindReg "x10", ExactShape (RVal_Bits x10));
-  (KindReg "x11", ExactShape (RVal_Bits x11)) ]
-  | _ => nil end.
-
-(* All CSR with exitential values, used in the universal contract of F. *)
-(* TODO: remove it  *)
-Definition uni_gpr := [
-  (KindReg "x0", BitsShape 64);
-  (KindReg "x1", BitsShape 64);
-  (KindReg "x5", BitsShape 64);
-  (KindReg "x10", BitsShape 64);
-  (KindReg "x11", BitsShape 64)
-].
-
-(* The two sets of definitions are equivalent. *)
-Lemma csr_equiv `{!islaG Σ} `{!threadG} :
-  reg_col uni_csr ⊣⊢ ∃ csr, ⌜length csr = 4%nat⌝ ∗ reg_col (machine_csr csr).
-Proof.
-  iSplit; rewrite /machine_csr /reg_col /=.
-  - liARun.
-    iExists (RegVal_Struct [("bits", RVal_Bits b)], b2, b1, b0, b, ())ₗ.
-    liARun.
-    iExists (RegVal_Struct [("bits", RVal_Bits b1)], ())ₗ.
-    by liARun.
-  - iIntros "[%csr [%Hcsr Hres]]".
-    do 5 (destruct csr as [|? csr]; try done); simpl.
-    iRevert "Hres".
-    liARun.
-    iExists (RegVal_Struct [("bits", RVal_Bits b)], ())ₗ.
-    iFrame.
-    by liARun.
-Qed.
-
-Lemma gpr_equiv `{!islaG Σ} `{!threadG} :
-  reg_col uni_gpr ⊣⊢ ∃ gpr, ⌜length gpr = 5%nat⌝ ∗ reg_col (machine_gpr gpr).
-Proof.
-  iSplit; rewrite /machine_gpr /reg_col /=.
-  - by liARun.
-  - iIntros "[%gpr [%Hgpr Hres]]".
-    do 6 (destruct gpr as [|? gpr]; try done); simpl.
-    iRevert "Hres".
-    liARun.
-    iExists (RVal_Bits b, ())ₗ.
-    iFrame.
-    by liARun.
-Qed.
-
-(* The Machine Model *)
-Definition Machine `{!islaG Σ} `{!threadG} (h: bv 64) (pmpcfgs: list (bv 8)) (csr gpr: list (bv 64)) (Pmem: bv (0x20000 * 8)) (Fmem: bv (0x1000 * 8)) : iProp Σ :=
-  match pmpcfgs with
-  | device_cfg :: monitor_code_cfg ::
-    osbi_code_cfg :: sp_code_cfg ::
-    osbi_data_cfg :: monitor_data_cfg :: nil =>
-  "mtvec" # "bits" ↦ᵣ RVal_Bits h ∗
-  "pmp0cfg" # "bits" ↦ᵣ RVal_Bits device_cfg ∗
-  "pmp1cfg" # "bits" ↦ᵣ RVal_Bits monitor_code_cfg  ∗
-  "pmp2cfg" # "bits" ↦ᵣ RVal_Bits osbi_code_cfg ∗
-  "pmp3cfg" # "bits" ↦ᵣ RVal_Bits sp_code_cfg ∗
-  "pmp4cfg" # "bits" ↦ᵣ RVal_Bits osbi_data_cfg ∗
-  "pmp5cfg" # "bits" ↦ᵣ RVal_Bits monitor_data_cfg ∗
-  "pmp6cfg" # "bits" ↦ᵣ RVal_Bits (BV 8 0) ∗
-  "pmp7cfg" # "bits" ↦ᵣ RVal_Bits (BV 8 0) ∗
-  reg_col dorami_sys_regs ∗ reg_col (machine_csr csr) ∗
-  reg_col (machine_gpr gpr) ∗ reg_col pmp_regs ∗
-  (bv_unsigned P_data_addr) ↦ₘ Pmem ∗
-  (bv_unsigned F_data_addr) ↦ₘ Fmem
-  | _ => emp end.
-
-Arguments Machine /.
-
-(* The P Compartment Model which doesn't have permission to *)
-(* F's data region compared with the Machine Model. *)
-Definition P `{!islaG Σ} `{!threadG}  (h: bv 64) (pmpcfgs: list (bv 8)) (csr gpr: list (bv 64)) (mem: bv (0x20000 * 8)): iProp Σ :=
-  match pmpcfgs, csr with
-  | device_cfg :: monitor_code_cfg ::
-    osbi_code_cfg :: sp_code_cfg ::
-    osbi_data_cfg :: monitor_data_cfg :: nil, mstatus :: other_csr =>
-  ⌜bv_extract 3 1 mstatus = (BV 1 0)⌝ ∗
-  "mtvec"# "bits" ↦ᵣ RVal_Bits h ∗
-  "pmp0cfg" # "bits" ↦ᵣ RVal_Bits device_cfg ∗
-  "pmp1cfg" # "bits" ↦ᵣ RVal_Bits monitor_code_cfg ∗
-  "pmp2cfg" # "bits" ↦ᵣ RVal_Bits osbi_code_cfg ∗
-  "pmp3cfg" # "bits" ↦ᵣ RVal_Bits sp_code_cfg ∗
-  "pmp4cfg" # "bits" ↦ᵣ RVal_Bits osbi_data_cfg ∗
-  "pmp5cfg" # "bits" ↦ᵣ RVal_Bits monitor_data_cfg ∗
-  "pmp6cfg" # "bits" ↦ᵣ RVal_Bits (BV 8 0) ∗
-  "pmp7cfg" # "bits" ↦ᵣ RVal_Bits (BV 8 0) ∗
-  reg_col dorami_sys_regs ∗ reg_col (machine_csr csr) ∗
-  reg_col (machine_gpr gpr) ∗ reg_col pmp_regs ∗
-  (bv_unsigned P_data_addr) ↦ₘ mem
-  | _, _ => emp end.
-
-Arguments P /.
-
-(* The F Compartment Model which doesn't have permission to *)
-(* P's data region compared with the Machine Model. *)
-Definition F `{!islaG Σ} `{!threadG}  (h: bv 64) (pmpcfgs: list (bv 8)) (csr gpr: list (bv 64)) (mem: bv (0x1000 * 8)): iProp Σ :=
-  match pmpcfgs with
-  | device_cfg :: monitor_code_cfg ::
-    osbi_code_cfg :: sp_code_cfg ::
-    osbi_data_cfg :: monitor_data_cfg :: nil =>
-  "mtvec"# "bits" ↦ᵣ RVal_Bits h ∗
-  "pmp0cfg" # "bits" ↦ᵣ RVal_Bits device_cfg ∗
-  "pmp1cfg" # "bits" ↦ᵣ RVal_Bits monitor_code_cfg ∗
-  "pmp2cfg" # "bits" ↦ᵣ RVal_Bits osbi_code_cfg ∗
-  "pmp3cfg" # "bits" ↦ᵣ RVal_Bits sp_code_cfg ∗
-  "pmp4cfg" # "bits" ↦ᵣ RVal_Bits osbi_data_cfg ∗
-  "pmp5cfg" # "bits" ↦ᵣ RVal_Bits monitor_data_cfg ∗
-  "pmp6cfg" # "bits" ↦ᵣ RVal_Bits (BV 8 0) ∗
-  "pmp7cfg" # "bits" ↦ᵣ RVal_Bits (BV 8 0) ∗
-  reg_col dorami_sys_regs ∗ reg_col (machine_csr csr) ∗
-  reg_col (machine_gpr gpr) ∗ reg_col pmp_regs ∗
-  (bv_unsigned F_data_addr) ↦ₘ mem
-  | _ => emp end.
-
-Arguments F /.
-
-(* The SallyPort Model which doesn't have permission to *)
-(* P's and F's data regions compared with the Machine Model. *)
-Definition SP `{!islaG Σ} `{!threadG}  (h: bv 64) (pmpcfgs: list (bv 8)) (mie: bool) (csr gpr: list (bv 64)) : iProp Σ :=
-  match pmpcfgs, csr with
-  | device_cfg :: monitor_code_cfg ::
-    osbi_code_cfg :: sp_code_cfg ::
-    osbi_data_cfg :: monitor_data_cfg :: nil, mstatus::_ =>
-  ⌜if mie then True else bv_extract 3 1 mstatus = (BV 1 0)⌝ ∗
-  "mtvec"# "bits" ↦ᵣ RVal_Bits h ∗
-  "pmp0cfg" # "bits" ↦ᵣ RVal_Bits device_cfg ∗
-  "pmp1cfg" # "bits" ↦ᵣ RVal_Bits monitor_code_cfg ∗
-  "pmp2cfg" # "bits" ↦ᵣ RVal_Bits osbi_code_cfg ∗
-  "pmp3cfg" # "bits" ↦ᵣ RVal_Bits sp_code_cfg ∗
-  "pmp4cfg" # "bits" ↦ᵣ RVal_Bits osbi_data_cfg ∗
-  "pmp5cfg" # "bits" ↦ᵣ RVal_Bits monitor_data_cfg ∗
-  "pmp6cfg" # "bits" ↦ᵣ RVal_Bits (BV 8 0) ∗
-  "pmp7cfg" # "bits" ↦ᵣ RVal_Bits (BV 8 0) ∗
-  reg_col dorami_sys_regs ∗ reg_col (machine_csr csr) ∗
-  reg_col (machine_gpr gpr) ∗ reg_col pmp_regs
-  | _, _ => emp end.
-
-Arguments SP /.
-
-(* The specification of transition from P to F *)
-Definition P2F_spec `{!islaG Σ} `{!threadG} (csr gpr: list (bv 64)) (mem: (bv (0x20000 * 8))) : iProp Σ :=
-  P P_mtvec P_pmpcfgs csr gpr mem ∗
-  instr_pre (bv_unsigned F_code_addr) (
-    P F_mtvec F_pmpcfgs csr (<[2%nat := (BV 64 0x989B989D981E)]>gpr) mem ∗
-    True
-  ).
-
-Arguments P2F_spec /.
-
-Theorem P2F `{!islaG Σ} `{!threadG} :
-  ∀ csr gpr mem,
-  length csr = 4%nat ->
-  length gpr = 5%nat ->
-  instr (bv_unsigned F_code_addr - 0x2c) (Some P2F.a0.a0) -∗
-  instr (bv_unsigned F_code_addr - 0x28) (Some P2F.a4.a4) -∗
-  instr (bv_unsigned F_code_addr - 0x24) (Some P2F.a8.a8) -∗
-  instr (bv_unsigned F_code_addr - 0x20) (Some P2F.ac.ac) -∗
-  instr (bv_unsigned F_code_addr - 0x1c) (Some P2F.a10.a10) -∗
-  instr (bv_unsigned F_code_addr - 0x18) (Some P2F.a14.a14) -∗
-  instr (bv_unsigned F_code_addr - 0x14) (Some P2F.a18.a18) -∗
-  instr (bv_unsigned F_code_addr - 0x10) (Some P2F.a1c.a1c) -∗
-  instr (bv_unsigned F_code_addr - 0xc) (Some P2F.a20.a20) -∗
-  instr (bv_unsigned F_code_addr - 0x8) (Some P2F.a24.a24) -∗
-  instr (bv_unsigned F_code_addr - 0x4) (Some P2F.a28.a28) -∗
-  instr_body (bv_unsigned F_code_addr - 0x2c) (P2F_spec csr gpr mem).
-Proof.
-  intros csr gpr mem Hcsr Hgpr.
-  do 5 (destruct csr as [|? csr]; try done).
-  do 6 (destruct gpr as [|? gpr]; try done).
-  iStartProof.
-  liARun.
-  Unshelve. all: prepare_sidecond.
-  all: bv_solve.
-Qed.
-
-(* The specification of transition from SallyPort to P_entry *)
-Definition SP_spec `{!islaG Σ} `{!threadG} (csr gpr: list (bv 64)) : iProp Σ :=
-  SP F_mtvec SP_pmpcfgs true csr gpr ∗
-  instr_pre (bv_unsigned P_code_addr) (
-    ∃ ms, SP P_mtvec P_entry_pmpcfgs false (ms::(tl csr)) (<[2%nat := (BV 64 0x9B989D989D1E)]>gpr) ∗
-    True
-  ).
-
-Arguments SP_spec /.
-
-(* We have to prove this specification of instruction a0 separately *)
-(* because this has many branches and interrupt is disabled after it. *)
-Definition SP_a0_spec `{!islaG Σ} `{!threadG} : iProp Σ :=
-  (∃ ms: bv 64, "mstatus" ↦ᵣ RegVal_Struct [("bits", RVal_Bits ms)]) ∗
-  reg_col dorami_sys_regs ∗
-  instr_pre (bv_unsigned SP_code_addr + 4) (
-  (∃ ms: bv 64, "mstatus" ↦ᵣ RegVal_Struct [("bits", RVal_Bits ms)] ∗
-    ⌜bv_extract 3 1 ms = (BV 1 0)⌝) ∗
-    reg_col dorami_sys_regs
-  ).
-
-Arguments SP_a0_spec /.
-
-Lemma a0_spec `{!islaG Σ} `{!threadG} :
-  instr (bv_unsigned SP_code_addr) (Some Sally_Port.a0.a0)
-  ⊢ instr_body (bv_unsigned SP_code_addr) SP_a0_spec.
-Proof.
-  iStartProof.
-  liARun.
-  (* TODO: automate it *)
-  (* Here we change the automation to read/write the field in struct reg. *)
-  (* But the support is not complete. *)
-  repeat (iApply find_in_context_reg_mapstostruct; iExists 0%nat; liARun).
-  all:match goal with
-  | |- environments.envs_entails _ (∃ x, ⌜RegVal_Struct [("bits", RVal_Bits (bv_to_bvn ?a))] = ?b⌝ ∗ ?B) =>
-      iExists (a, ())ₗ
-  end.
-  all:liARun; iFrame.
-  Unshelve. all: prepare_sidecond.
-  all: bv_simplify; bitblast.
-Qed.
-
-Theorem SP2P_entry `{!islaG Σ} `{!threadG} :
-  ∀ csr gpr,
-  length csr = 4%nat ->
-  length gpr = 5%nat ->
-  instr (bv_unsigned SP_code_addr) (Some Sally_Port.a0.a0) -∗
-  instr (bv_unsigned SP_code_addr + 0x4) (Some Sally_Port.a4.a4) -∗
-  instr (bv_unsigned SP_code_addr + 0x8) (Some Sally_Port.a8.a8) -∗
-  instr (bv_unsigned SP_code_addr + 0xc) (Some Sally_Port.ac.ac) -∗
-  instr (bv_unsigned SP_code_addr + 0x10) (Some Sally_Port.a10.a10) -∗
-  instr (bv_unsigned SP_code_addr + 0x14) (Some Sally_Port.a14.a14) -∗
-  instr (bv_unsigned SP_code_addr + 0x18) (Some Sally_Port.a18.a18) -∗
-  instr (bv_unsigned SP_code_addr + 0x1c) (Some Sally_Port.a1c.a1c) -∗
-  instr (bv_unsigned SP_code_addr + 0x20) (Some Sally_Port.a20.a20) -∗
-  instr (bv_unsigned SP_code_addr + 0x24) (Some Sally_Port.a24.a24) -∗
-  instr (bv_unsigned SP_code_addr + 0x28) (Some Sally_Port.a28.a28) -∗
-  instr (bv_unsigned SP_code_addr + 0x2c) (Some Sally_Port.a2c.a2c) -∗
-  instr_body (bv_unsigned SP_code_addr) (SP_spec csr gpr).
-Proof.
-  intros csr gpr Hcsr Hgpr.
-  do 5 (destruct csr as [|? csr]; try done).
-  do 6 (destruct gpr as [|? gpr]; try done).
-  iStartProof.
-  iIntros.
-  iPoseProof (a0_spec with "[$]") as "Ha0_spec".
-  liARun.
-  iExists (b, ())ₗ.
-  liARun.
-  iExists (ms, ())ₗ.
-  liARun.
-  Unshelve. all: prepare_sidecond.
-  all: bv_solve.
-Qed.
-
-(* The specification of transition from P_entry to P *)
-Definition P_entry_spec `{!islaG Σ} `{!threadG} (csr gpr csr' gpr': list (bv 64)) (mem: (bv (0x20000 * 8))) :iProp Σ :=
-  P P_mtvec P_entry_pmpcfgs csr gpr mem ∗
-  instr_pre (bv_unsigned P_code_addr + 0x1c) (
-    P P_mtvec P_pmpcfgs csr (<[2%nat := (BV 64 0x9B9898989D1E)]>gpr) mem ∗
-    True
-  ).
-
-Arguments P_entry_spec /.
-
-Lemma P_entry_proof `{!islaG Σ} `{!threadG} :
-  ∀ csr gpr mem,
-  length csr = 4%nat ->
-  length gpr = 5%nat ->
-  instr (bv_unsigned P_code_addr) (Some P_entry.a0.a0) -∗
-  instr (bv_unsigned P_code_addr + 0x4) (Some P_entry.a4.a4) -∗
-  instr (bv_unsigned P_code_addr + 0x8) (Some P_entry.a8.a8) -∗
-  instr (bv_unsigned P_code_addr + 0xc) (Some P_entry.ac.ac) -∗
-  instr (bv_unsigned P_code_addr + 0x10) (Some P_entry.a10.a10) -∗
-  instr (bv_unsigned P_code_addr + 0x14) (Some P_entry.a14.a14) -∗
-  instr (bv_unsigned P_code_addr + 0x18) (Some P_entry.a18.a18) -∗
-  instr_body (bv_unsigned P_code_addr) (P_entry_spec csr gpr csr (<[2%nat := (BV 64 0x9B9898989D1E)]>gpr) mem).
-Proof.
-  intros csr gpr mem Hcsr Hgpr.
-  do 5 (destruct csr as [|? csr]; try done).
-  do 6 (destruct gpr as [|? gpr]; try done).
-  iStartProof.
-  liARun.
-  Unshelve. all: prepare_sidecond.
-  all: bv_solve.
-Qed.
+From isla.dorami Require Import model.
+From isla.dorami Require Import later_lifting.
 
 (********************** Assumption Definitions Start ***********************)
 
@@ -498,16 +46,6 @@ Definition NoStuckEvalNow (t: isla_trace) : Prop :=
 (* The expression evaluation in the whole trace t is not stuck. *)
 Definition NoStuckEval (t: isla_trace) : Prop :=
   t ≠ tnil -> forall t', rtc (fun t t' => ∃ label regs, trace_step t regs label t' ∧ label ≠ Some (LDone t')) t t' -> NoStuckEvalNow t'.
-
-Fixpoint NoPMPOrMTVECWrite (t: isla_trace) : bool :=
-  match t with
-  | tcons (WriteReg regname _ _ _) t =>
-      negb (String.prefix "pmp" regname) &&
-      negb (String.eqb "mtvec" regname) && NoPMPOrMTVECWrite t
-  | tcons _ t => NoPMPOrMTVECWrite t
-  | tcases ts => forallb NoPMPOrMTVECWrite ts
-  | _ => true
-  end.
 
 Scheme Equality for accessor.
 Scheme Equality for list.
@@ -698,63 +236,6 @@ Proof.
   destruct Hstep; first [done | by apply subst_trace_NoEvent| trivial].
   rewrite /= !Is_true_true forallb_forall in Ht.
   by apply Is_true_true, Ht, elem_of_list_In.
-Qed.
-
-Lemma tcons_NoPMPOrMTVECWrite event tail :
-  NoPMPOrMTVECWrite (event :t: tail) -> NoPMPOrMTVECWrite tail.
-Proof.
-  intro.
-  unfold NoPMPOrMTVECWrite in H.
-  fold NoPMPOrMTVECWrite in H.
-  destruct event; try done.
-  rewrite Is_true_true in H.
-  symmetry in H.
-  apply andb_true_eq in H.
-  destruct H as (_ & H).
-  by apply Is_true_true.
-Qed.
-
-Lemma subst_trace_NoPMPOrMTVECWrite v x t:
-  NoPMPOrMTVECWrite t -> NoPMPOrMTVECWrite (subst_trace v x t).
-Proof.
-  intro.
-  induction t as [|e tail IH|es IH] using isla_trace_custom_ind; first done.
-  - assert (H' := H).
-    unfold NoPMPOrMTVECWrite in H.
-    fold NoPMPOrMTVECWrite in H.
-    unfold subst_trace. fold subst_trace.
-    unfold NoPMPOrMTVECWrite. fold NoPMPOrMTVECWrite.
-    apply tcons_NoPMPOrMTVECWrite in H'. apply IH in H'.
-    destruct e; try done.
-    unfold subst_val_event.
-    rewrite !Is_true_true !andb_true_iff in H |- *.
-    destruct H as [[H1 H2] H3].
-    apply Is_true_true in H'.
-    split; last done.
-    split; done.
-  - rewrite Forall_forall in IH.
-    rewrite /= !Is_true_true !forallb_forall in H |- * => t Hin.
-    rewrite /subst_trace -/subst_trace -elem_of_list_In in Hin.
-    apply elem_of_list_fmap_2 in Hin.
-    destruct Hin as [y [-> Hin]].
-    rewrite -Is_true_true.
-    apply IH; first done.
-    rewrite Is_true_true.
-    apply H.
-    by rewrite -elem_of_list_In.
-Qed.
-
-Lemma trace_step_NoPMPOrMTVECWrite t regs label t' :
-  t ≠ tnil -> trace_step t regs label t' -> NoPMPOrMTVECWrite t -> NoPMPOrMTVECWrite t'.
-Proof.
-  intros Hneq Hstep Ht.
-  destruct Hstep;
-    first [done | by apply subst_trace_NoPMPOrMTVECWrite |  by apply tcons_NoPMPOrMTVECWrite in Ht | trivial].
-  unfold NoPMPOrMTVECWrite in Ht.
-  fold NoPMPOrMTVECWrite in Ht.
-  rewrite Is_true_true forallb_forall in Ht.
-  rewrite Is_true_true.
-  by apply Ht, elem_of_list_In.
 Qed.
 
 Lemma subst_trace_NoEmptyCases v x t:
@@ -1212,401 +693,7 @@ Proof.
 Qed.
 (********************* Properties of Assumption End **********************)
 
-(******************* Lifting Rules with Later Mod Start *******************)
-Lemma wp_declare_const_bool' `{!islaG Σ} `{!threadG} v es ann:
-  (∀ (b : bool), ▷WPasm (subst_trace (Val_Bool b) v es)) -∗
-  WPasm (Smt (DeclareConst v Ty_Bool) ann :t: es).
-Proof.
-  iIntros "Hcont". setoid_rewrite wp_asm_unfold.
-  iIntros ([????]) "/= -> -> -> Hθ".
-  iApply lifting.wp_lift_step; [done|].
-  iIntros (σ1 ??? ?) "(?&Hictx&?)".
-  iApply fupd_mask_intro; first set_solver. iIntros "HE".
-  iSplit. {
-    iPureIntro. eexists _, _, _, _; simpl. econstructor; [done |by econstructor|]; simpl.
-    done.
-  }
-  iIntros "!>" (????) "_". iMod "HE" as "_". iModIntro.
-  inv_seq_step.
-  iFrame; iSplitL; [|done].
-  iApply ("Hcont"); [done..|].
-  iFrame.
-  Unshelve. exact true.
-Qed.
-
-Lemma wp_declare_const_bv' `{!islaG Σ} `{!threadG} v es ann b:
-  (∀ (n : bv b), ▷WPasm (subst_trace (Val_Bits n) v es)) -∗
-  WPasm (Smt (DeclareConst v (Ty_BitVec b)) ann :t: es).
-Proof.
-  iIntros "Hcont". setoid_rewrite wp_asm_unfold.
-  iIntros ([????]) "/= -> -> -> Hθ".
-  iApply lifting.wp_lift_step; [done|].
-  iIntros (σ1 ??? ?) "(?&Hictx&?)".
-  iApply fupd_mask_intro; first set_solver. iIntros "HE".
-  iSplit. {
-    iPureIntro. eexists _, _, _, _; simpl. econstructor; [done |by apply DeclareConstBitVecS'|]; simpl.
-    done.
-  }
-  iIntros "!>" (????) "_". iMod "HE" as "_". iModIntro.
-  inv_seq_step.
-  iFrame; iSplitL; [|done].
-  iApply ("Hcont"); [done..|].
-  iFrame.
-  Unshelve. apply: inhabitant.
-Qed.
-
-Lemma wp_declare_const_enum' `{!islaG Σ} `{!threadG} v es i ann:
-  (∀ c, ▷ WPasm (subst_trace (Val_Enum (c)) v es)) -∗
-  WPasm (Smt (DeclareConst v (Ty_Enum i)) ann :t: es).
-Proof.
-  iIntros "Hcont". setoid_rewrite wp_asm_unfold.
-  iIntros ([????]) "/= -> -> -> Hθ".
-  iApply lifting.wp_lift_step; [done|].
-  iIntros (σ1 ??? ?) "(?&Hictx&?)".
-  iApply fupd_mask_intro; first set_solver. iIntros "HE".
-  iSplit. {
-    iPureIntro. eexists _, _, _, _; simpl. econstructor; [done |by econstructor|]; simpl.
-    done.
-  }
-  iIntros "!>" (????) "_". iMod "HE" as "_". iModIntro.
-  inv_seq_step.
-  iFrame; iSplitL; [|done].
-  iApply ("Hcont"); [done..|].
-  iFrame.
-  Unshelve. exact: inhabitant.
-Qed.
-
-Lemma wp_define_const' `{!islaG Σ} `{!threadG} n es ann e:
-  WPexp e {{ v, ▷ WPasm (subst_trace v n es) }} -∗
-  WPasm (Smt (DefineConst n e) ann :t: es).
-Proof.
-  rewrite wp_asm_unfold wp_exp_unfold. iDestruct 1 as (v Hv) "Hcont".
-  rewrite wp_asm_unfold.
-  iIntros ([????]) "/= -> -> -> Hθ".
-  iApply lifting.wp_lift_step; [done|].
-  iIntros (σ1 ??? ?) "(?&Hictx)".
-  iApply fupd_mask_intro; first set_solver. iIntros "HE".
-  iSplit. {
-    iPureIntro. eexists _, _, _, _; simpl. econstructor; [done |by econstructor|]; simpl.
-    done.
-  }
-  iIntros "!>" (????) "_". iMod "HE" as "_". iModIntro.
-  inv_seq_step.
-  iFrame; iSplitL; [|done].
-  iApply ("Hcont"); [done..|].
-  iFrame.
-Qed.
-
-Lemma wp_assert' `{!islaG Σ} `{!threadG} es ann e:
-  WPexp e {{ v, (∃ b, ⌜v = Val_Bool b⌝ ∗ ▷ (⌜b = true⌝ -∗ WPasm es)) }} -∗
-  WPasm (Smt (Assert e) ann :t: es).
-Proof.
-  rewrite wp_exp_unfold. iDestruct 1 as (v Hv b ?) "Hcont". subst v.
-  rewrite !wp_asm_unfold.
-  iIntros ([????]) "/= -> -> -> Hθ".
-  iApply lifting.wp_lift_step; [done|].
-  iIntros (σ1 ??? ?) "Hctx".
-  iApply fupd_mask_intro; first set_solver. iIntros "HE".
-  iSplit. {
-    iPureIntro. destruct b.
-    all: eexists _, _, _, _; econstructor; [done |by econstructor| done].
-  }
-  iIntros "!>" (????) "_". iMod "HE" as "_". iModIntro.
-  inv_seq_step.
-  iFrame; iSplit; [|done].
-  destruct b => /=; last by iApply wp_value.
-  iApply "Hcont"; [done..|iFrame].
-Qed.
-
-Lemma wp_branch' `{!islaG Σ} `{!threadG} c desc es ann:
-  ▷ WPasm es -∗
-  WPasm (Branch c desc ann :t: es).
-Proof.
-  iIntros "Hcont". setoid_rewrite wp_asm_unfold.
-  iIntros ([????]) "/= -> -> -> Hθ".
-  iApply lifting.wp_lift_step; [done|].
-  iIntros (σ1 ??? ?) "(?&Hictx&?)".
-  iApply fupd_mask_intro; first set_solver. iIntros "HE".
-  iSplit. {
-    iPureIntro. eexists _, _, _, _; simpl. econstructor; [done |by econstructor|]; simpl.
-    done.
-  }
-  iIntros "!>" (????) "_". iMod "HE" as "_". iModIntro.
-  inv_seq_step.
-  iFrame; iSplitL; [|done].
-  iApply ("Hcont"); [done..|].
-  iFrame.
-Qed.
-
-Lemma wp_read_reg' `{!islaG Σ} `{!threadG} r v vread ann es al:
-  read_accessor al v = Some vread →
-  WPreadreg r @ al {{ v', ▷ (⌜vread = v'⌝ -∗ WPasm es) }} -∗
-  WPasm (ReadReg r al v ann :t: es).
-Proof.
-  rewrite wp_asm_eq wpreadreg_eq. iIntros (?) "Hr".
-  iIntros ([????]) "/= -> -> -> Hθ".
-  iApply lifting.wp_lift_step; [done|].
-  iIntros (σ1 ??? ?) "(?&Hictx&?)".
-  iApply fupd_mask_intro; first set_solver. iIntros "HE".
-  iDestruct ("Hr" with "Hθ") as (v' v'' ??) "[? Hcont]".
-  iSplit. {
-    iPureIntro. eexists _, _, _, _; simpl. econstructor; [done |by econstructor|]; simpl.
-    eexists _, _, _. split_and! => //. by right.
-  }
-  iIntros "!>" (????) "_". iMod "HE" as "_". iModIntro.
-  inv_seq_step. revert select (∃ x, _) => -[?[?[?[?[?[?[?[?[[??]|?]]]]]]]]]; simplify_eq/=. 2: {
-    iFrame. iSplitL; [|done]. by iApply wp_value.
-  }
-  iFrame; iSplitL; [|done].
-  iApply ("Hcont" with "[//]"); [done..|].
-  iFrame.
-Qed.
-
-Lemma wp_write_reg_acc' `{!islaG Σ} `{!threadG} r v v' v'' vnew ann es al:
-  read_accessor al v = Some vnew →
-  write_accessor al v' vnew = Some v'' →
-  r ↦ᵣ v' -∗
-  ▷ (r ↦ᵣ v'' -∗ WPasm es) -∗
-  WPasm (WriteReg r al v ann :t: es).
-Proof.
-  iIntros (? ?) "Hr Hcont". setoid_rewrite wp_asm_unfold.
-  iIntros ([????]) "/= -> -> -> Hθ".
-  iApply lifting.wp_lift_step; [done|].
-  iIntros (σ1 ??? ?) "(?&Hictx&?)".
-  iApply fupd_mask_intro; first set_solver. iIntros "HE".
-  iDestruct (reg_mapsto_lookup with "Hθ Hr") as %Hr.
-  iSplit. {
-    iPureIntro. eexists _, _, _, _; simpl. econstructor; [done |by econstructor|]; simpl.
-    eexists _, _, _. done.
-  }
-  iIntros "!>" (????) "_". iMod "HE" as "_". iModIntro.
-  inv_seq_step.
-  revert select (∃ _, _) => -[?[?[?[?[?[?[?[??]]]]]]]].
-  unfold sail_name in *. simplify_eq.
-  iFrame; iSplitL; [|done].
-  iMod (reg_mapsto_update with "Hθ Hr") as "[Hθ Hr]".
-  iApply ("Hcont" with "Hr"); [done..|].
-  iFrame.
-Qed.
-
-Lemma wp_write_reg_struct' `{!islaG Σ} `{!threadG} r v v' vnew ann es f:
-  read_accessor [Field f] v = Some vnew →
-  r # f ↦ᵣ v' -∗
-  ▷ (r # f ↦ᵣ vnew -∗ WPasm es) -∗
-  WPasm (WriteReg r [Field f] v ann :t: es).
-Proof.
-  iIntros (?) "Hr Hcont". setoid_rewrite wp_asm_unfold.
-  iIntros ([????]) "/= -> -> -> Hθ".
-  iApply lifting.wp_lift_step; [done|].
-  iIntros (σ1 ??? ?) "(?&Hictx&?)".
-  iApply fupd_mask_intro; first set_solver. iIntros "HE".
-  iDestruct (struct_reg_mapsto_lookup with "Hθ Hr") as %(?&?&?&?&?).
-  iSplit. {
-    iPureIntro. eexists _, _, _, _; simpl. econstructor; [done |by econstructor|]; simpl.
-    eexists _, _, _. split_and! => //. rewrite /write_accessor/=. by simplify_option_eq.
-  }
-  iIntros "!>" (????) "_". iMod "HE" as "_". iModIntro.
-  inv_seq_step.
-  revert select (∃ _, _) => -[?[?[?[?[?[?[?[??]]]]]]]].
-  unfold sail_name, write_accessor in *. simplify_option_eq.
-  iFrame; iSplitL; [|done].
-  iMod (struct_reg_mapsto_update with "Hθ Hr") as "[Hθ Hr]"; [done..|].
-  iApply ("Hcont" with "Hr"); [done..|].
-  iFrame.
-Qed.
-
-Lemma wp_write_reg' `{!islaG Σ} `{!threadG} r v v' ann es:
-  r ↦ᵣ v' -∗
-  ▷ (r ↦ᵣ v -∗ WPasm es) -∗
-  WPasm (WriteReg r [] v ann :t: es).
-Proof. by apply: wp_write_reg_acc'. Qed.
-
-Lemma wp_read_mem' `{!islaG Σ} `{!threadG} n len a vread (vmem : bv n) es ann kind tag q:
-  n = (8 * len)%N →
-  0 < Z.of_N len →
-  bv_unsigned a ↦ₘ{q} vmem -∗
-  ▷ (⌜vread = vmem⌝ -∗ bv_unsigned a ↦ₘ{q} vmem -∗ WPasm es) -∗
-  WPasm (ReadMem (RVal_Bits (@bv_to_bvn n vread)) kind (RVal_Bits (@bv_to_bvn 64 a)) len tag ann :t: es).
-Proof.
-  iIntros (??) "Hm Hcont". setoid_rewrite wp_asm_unfold. subst.
-  iIntros ([????]) "/= -> -> -> Hθ".
-  iApply lifting.wp_lift_step; [done|].
-  iIntros (σ1 ????) "(Hctx&Hictx&Hmem)".
-  iApply fupd_mask_intro; first set_solver. iIntros "HE".
-  iDestruct (mem_mapsto_lookup with "Hmem Hm") as %[len' [??]].
-  have ? : len' = len by lia. subst.
-  iSplit. {
-    iPureIntro. eexists _, _, _, _. simpl. econstructor; [done | by econstructor |] => /=.
-    eexists _, _, _. simplify_option_eq. naive_solver.
-  }
-  iIntros "!>" (????) "_". iMod "HE" as "_". iModIntro.
-  inv_seq_step.
-  revert select (∃ _, _) => -[?[?[?[?[?[??]]]]]];
-    simplify_option_eq; destruct_and!; destruct_or!; destruct_and?; simplify_eq. 2:{
-    iFrame. iSplitL; [|done]. by iApply wp_value.
-  }
-  iFrame. iSplit; [|done].
-  iApply ("Hcont" with "[] [Hm]"); done.
-Qed.
-
-Lemma wp_write_mem' `{!islaG Σ} `{!threadG} n len a (vold vnew : bv n) es ann res kind tag:
-  n = (8 * len)%N →
-  0 < Z.of_N len →
-  bv_unsigned a ↦ₘ vold -∗
-  ▷ (bv_unsigned a ↦ₘ vnew -∗ WPasm es) -∗
-  WPasm (WriteMem (RVal_Bool res) kind (RVal_Bits (@bv_to_bvn 64 a)) (RVal_Bits (@bv_to_bvn n vnew)) len tag ann :t: es).
-Proof.
-  iIntros (??) "Hm Hcont". subst. setoid_rewrite wp_asm_unfold.
-  iIntros ([????]) "/= -> -> -> Hθ".
-  iApply lifting.wp_lift_step; [done|].
-  iIntros (σ1 ????) "(Hctx&Hictx&Hmem)".
-  iApply fupd_mask_intro; first set_solver. iIntros "HE".
-  iDestruct (mem_mapsto_lookup with "Hmem Hm") as %[len' [??]].
-  have ? : len' = len by lia. subst.
-  iSplit. {
-    iPureIntro. eexists _, _, _, _. simpl. econstructor; [done | by econstructor |]. simpl.
-    eexists _, _, _. simplify_option_eq. naive_solver.
-  }
-  iIntros "!>" (????) "_". iMod "HE" as "_".
-  inv_seq_step.
-  revert select (∃ _, _) => -[?[?[?[?[??]]]]]; simplify_option_eq; destruct_and!; simplify_eq.
-  iMod (mem_mapsto_update with "Hmem Hm") as (len' ?) "[Hmem Hm]".
-  rewrite Z_to_bv_bv_unsigned. have ? : len' = len by lia. subst. iFrame.
-  iModIntro. iSplitL; [|done].
-  by iApply ("Hcont" with "Hm").
-Qed.
-
-Lemma wp_branch_address' `{!islaG Σ} `{!threadG} v es ann:
-  ▷ WPasm es -∗
-  WPasm (BranchAddress v ann :t: es).
-Proof.
-  iIntros "Hcont". setoid_rewrite wp_asm_unfold.
-  iIntros ([????]) "/= -> -> -> Hθ".
-  iApply lifting.wp_lift_step; [done|].
-  iIntros (σ1 ??? ?) "(?&Hictx&?)".
-  iApply fupd_mask_intro; first set_solver. iIntros "HE".
-  iSplit. {
-    iPureIntro. eexists _, _, _, _; simpl. econstructor; [done |by econstructor|]; simpl.
-    done.
-  }
-  iIntros "!>" (????) "_". iMod "HE" as "_". iModIntro.
-  inv_seq_step.
-  iFrame; iSplitL; [|done].
-  iApply ("Hcont"); [done..|].
-  iFrame.
-Qed.
-
-Lemma wp_barrier' `{!islaG Σ} `{!threadG} es v ann:
-  ▷ WPasm es -∗
-  WPasm (Barrier v ann :t: es).
-Proof.
-  rewrite wp_asm_eq.
-  iIntros "Hcont" ([????]) "/= -> -> -> Hθ".
-  iApply lifting.wp_lift_step; [done|].
-  iIntros (σ1 ??? ?) "Hctx".
-  iApply fupd_mask_intro; first set_solver. iIntros "HE".
-  iSplit. {
-    iPureIntro.
-    eexists _, _, _, _; econstructor; [done |by econstructor| done].
-  }
-  iIntros "!>" (????) "_". iMod "HE" as "_". iModIntro.
-  inv_seq_step.
-  iFrame; iSplit; [|done].
-  iApply "Hcont"; [done..|iFrame].
-Qed.
-
-Lemma wp_assume_reg' `{!islaG Σ} `{!threadG} r v ann es al:
-  WPreadreg r @ al {{ v', ⌜v = v'⌝ ∗ ▷ WPasm es }} -∗
-  WPasm (AssumeReg r al v ann :t: es).
-Proof.
-  rewrite wp_asm_eq wpreadreg_eq. iIntros "Hr".
-  iIntros ([????]) "/= -> -> -> Hθ".
-  iApply lifting.wp_lift_step; [done|].
-  iIntros (σ1 ??? ?) "(?&Hictx&?)".
-  iApply fupd_mask_intro; first set_solver. iIntros "HE".
-  iDestruct ("Hr" with "Hθ") as (v' v'' ??) "[Hr [% Hcont]]"; subst.
-  iSplit. {
-    iPureIntro. eexists _, _, _, _; simpl. econstructor; [done |by econstructor|]; simpl.
-    eexists _. split_and! => //.
-  }
-  iIntros "!>" (????) "_". iMod "HE" as "_". iModIntro.
-  inv_seq_step. revert select (∃ x, _) => -[?[?[?[?[??]]]]]; simplify_eq/=.
-  iFrame; iSplitL; [|done].
-  iApply ("Hcont" with "[]"); [done..|].
-  iFrame.
-Qed.
-
-Lemma wp_assume' `{!islaG Σ} `{!threadG} es ann e:
-  WPaexp e {{ v, ⌜v = Val_Bool true⌝ ∗ ▷ WPasm es }} -∗
-  WPasm (Assume e ann :t: es).
-Proof.
-  rewrite wp_a_exp_unfold wp_asm_eq.
-  iIntros "Hexp" ([????]) "/= -> -> -> Hθ".
-  iDestruct ("Hexp" with "Hθ") as (v ?) "(Hθ&%&Hcont)"; subst.
-  iApply lifting.wp_lift_step; [done|].
-  iIntros (σ1 ??? ?) "Hctx".
-  iApply fupd_mask_intro; first set_solver. iIntros "HE".
-  iSplit. {
-    iPureIntro.
-    eexists _, _, _, _; econstructor; [done | by econstructor|done].
-  }
-  iIntros "!>" (????) "_". iMod "HE" as "_". iModIntro.
-  inv_seq_step.
-  iFrame; iSplit; [|done].
-  iApply "Hcont"; [done..|iFrame].
-Qed.
-
-Lemma wp_abstract_primop' `{!islaG Σ} `{!threadG} es n v args ann:
-  ▷ WPasm es -∗
-  WPasm (AbstractPrimop n v args ann :t: es).
-Proof.
-  rewrite wp_asm_eq.
-  iIntros "Hcont" ([????]) "/= -> -> -> Hθ".
-  iApply lifting.wp_lift_step; [done|].
-  iIntros (σ1 ??? ?) "Hctx".
-  iApply fupd_mask_intro; first set_solver. iIntros "HE".
-  iSplit. {
-    iPureIntro.
-    eexists _, _, _, _; econstructor; [done |by econstructor| done].
-  }
-  iIntros "!>" (????) "_". iMod "HE" as "_". iModIntro.
-  inv_seq_step.
-  iFrame; iSplit; [|done].
-  iApply "Hcont"; [done..|iFrame].
-Qed.
-
-Lemma wp_cases' `{!islaG Σ} `{!threadG} ts:
-  ts ≠ [] →
-  ▷(∀ t, ⌜t ∈ ts⌝ -∗ WPasm t) -∗
-  WPasm (tcases ts).
-Proof.
-  iIntros (?) "Hwp". setoid_rewrite wp_asm_unfold.
-  iIntros ([? regs ? ?]) "/= -> -> -> Hθ".
-  iApply lifting.wp_lift_step; [done|].
-  iIntros (σ1 ??? ?) "Hctx".
-  iApply fupd_mask_intro; first set_solver. iIntros "HE".
-  iSplit. {
-    destruct ts => //.
-    iPureIntro. eexists _, _, _, _; simpl. econstructor; [done |econstructor; by left|done].
-  }
-  iIntros "!>" (????) "_". iMod "HE" as "_".
-  inv_seq_step. iModIntro.
-  iFrame. iSplitL; [|done].
-  by iApply "Hwp".
-Qed.
-(******************* Lifting Rules with Later Mod End *******************)
-
-(* Progress! Prove that the WPasm t will definitely eval to WPasm nil. *)
-(* Preservation! Prove that the resources after any event still hold *)
-(* against the `in_firmware` or `exit_firmware`. *)
-(* Since we assume that only at the exit_firmware we can change the PMP *)
-(* or MTVEC, we can say that whenever we arrive at the state *)
-(* `exit_firmware`, the instruction trace must be the trace of *)
-(* exit_firmware_inst. *)
-(* exit_firmware state is a trap state which has no next state. How to *)
-(* prove this? Because we know the exact value for the pc. *)
-
-Definition dorami_firmware (i: bv 64) `{!islaG Σ} `{!threadG} : iProp Σ :=
+Definition F_with_PC (i: bv 64) `{!islaG Σ} `{!threadG} : iProp Σ :=
   "PC" ↦ᵣ RVal_Bits i ∗
   ⌜bv_unsigned (bv_extract 0 2 i) = 0⌝ ∗
   ⌜(bv_unsigned F_code_addr) <= (bv_unsigned i) < (bv_unsigned F_code_end_addr)⌝ ∗
@@ -1625,7 +712,6 @@ Definition dorami_firmware (i: bv 64) `{!islaG Σ} `{!threadG} : iProp Σ :=
 Lemma tcons_preservation `{!islaG Σ} `{!threadG} :
   ∀ i e tail,
   NoEvent (e :t: tail) ->
-  (* NoPMPOrMTVECWrite (e :t: tail) -> *)
   NoStuckEval (e :t: tail) ->
   LegalReadReg (e :t: tail) ->
   LegalWriteReg (e :t: tail) ->
@@ -1635,8 +721,8 @@ Lemma tcons_preservation `{!islaG Σ} `{!threadG} :
   LegalAssume (e :t: tail) ->
   □ illegal_PC -∗
   ▷(∀ t', (∃ label regs, ⌜trace_step (e:t:tail) regs label t'⌝) -∗
-                    (∃ i, dorami_firmware i)  -∗ WPasm t') -∗
-  (dorami_firmware i -∗ WPasm (e :t: tail)).
+                    (∃ i, F_with_PC i)  -∗ WPasm t') -∗
+  (F_with_PC i -∗ WPasm (e :t: tail)).
 Proof.
   iIntros (i e tail HNoEvent HNoStuckEval HReadReg HWriteReg HReadMem HWriteMem HAssumeReg HAssume) "#Htrap Hnext Hstart".
   destruct e; try done.
@@ -1744,7 +830,7 @@ Proof.
       unfold valu_has_shape in Hv.
       destruct v; first destruct base_val5; try done.
       iApply (read_reg_acc with "Hreg").
-      { 
+      {
         unfold read_accessor.
         simpl.
         rewrite Hf.
@@ -1867,7 +953,7 @@ Proof.
     replace (bv_unsigned addr) with (bv_unsigned F_data_addr + (bv_unsigned addr - bv_unsigned F_data_addr)) by lia.
     iPoseProof (mem_mapsto_uninit_combine with "HM1 HM2") as "Hmem"; first lia.
     iExists i.
-    unfold dorami_firmware.
+    unfold F_with_PC.
     liARun.
     by iFrame.
   - specialize (HWriteMem ltac:(done) (WriteMem valu5 wkind addr data num_bytes tag_value5 annot5 :t:
@@ -1910,7 +996,7 @@ Proof.
     replace (bv_unsigned addr) with (bv_unsigned F_data_addr + (bv_unsigned addr - bv_unsigned F_data_addr)) by lia.
     iPoseProof (mem_mapsto_uninit_combine with "HM1 HM2") as "Hmem"; first lia.
     iExists i.
-    unfold dorami_firmware.
+    unfold F_with_PC.
     liARun.
     by iFrame.
   - iApply wp_branch_address'.
@@ -1973,7 +1059,7 @@ Proof.
     all: iModIntro.
     all: iApply ("Hnext" with "[%]"); first (econstructor; exists (assume_regs_map F_mtvec); by econstructor).
     all: iExists i.
-    all: unfold dorami_firmware.
+    all: unfold F_with_PC.
     all: liARun.
     all: iFrame.
     Unshelve.
@@ -1991,8 +1077,8 @@ Lemma tcases_preservation `{!islaG Σ} `{!threadG} :
   ∀ i es,
   es ≠ [] →
   ▷ (∀ t, ⌜t ∈ es⌝ -∗
-        ((∃ i, dorami_firmware i) -∗ WPasm t)) -∗
-  (dorami_firmware i -∗ WPasm (tcases es)).
+        ((∃ i, F_with_PC i) -∗ WPasm t)) -∗
+  (F_with_PC i -∗ WPasm (tcases es)).
 Proof.
   iIntros (i es ?) "Hnext Hstart".
   iApply wp_cases'; first done.
@@ -2001,30 +1087,6 @@ Proof.
   by iExists i.
 Qed.
 
-(*
-(* Should have the "instr i (Some t)" *)
-Definition trace_contract `{!islaG Σ} `{!threadG} :=
-  ∀ i t,
-  NoEvent t ->
-  NoEmptyCases t ->
-  NoStuckEval t ->
-  LegalReadReg t ->
-  LegalWriteReg t ->
-  LegalReadMem t ->
-  LegalWriteMem t ->
-  LegalAssumeReg t ->
-  LegalAssume t ->
-  NoPMPOrMTVECWrite t ∨ (t = exit_firmware.a0.a0 ∧ i = F_code_end_addr) ->
-  □ illegal_PC -∗
-  ((∃ i, dorami_firmware i)
-    ∨ ("PC" ↦ᵣ RVal_Bits SP_code_addr ∗
-       ∃ csr gpr mem,
-           ⌜ length csr = 4%nat ∧ length gpr = 5%nat ⌝ ∗
-           F F_mtvec SP_pmpcfgs csr gpr mem)
-      -∗ WPasm tnil) -∗
-  (dorami_firmware i -∗ WPasm t).
-*)
-
 Definition trace_contract `{!islaG Σ} `{!threadG} :=
   ∀ i t,
   NoEvent t ->
@@ -2037,8 +1099,8 @@ Definition trace_contract `{!islaG Σ} `{!threadG} :=
   LegalAssumeReg t ->
   LegalAssume t ->
   □ illegal_PC -∗
-  ((∃ i, dorami_firmware i) -∗ WPasm tnil) -∗
-  (dorami_firmware i -∗ WPasm t).
+  ((∃ i, F_with_PC i) -∗ WPasm tnil) -∗
+  (F_with_PC i -∗ WPasm t).
 
 Lemma valid_trace_contract `{!islaG Σ} `{!threadG} : trace_contract.
 Proof.
@@ -2135,7 +1197,7 @@ Proof.
 Qed.
 
 Definition universal_instrs `{!islaG Σ} `{!threadG} : iProp Σ :=
-  ([∗ list] i ↦ _ ∈ replicate 1023 (), (∃ t, instr (0x80020000 + i * 4) (Some t) ∗ ⌜NoPMPOrMTVECWrite t  ∧ NoEmptyCases t ∧ NoEvent t ∧ NoStuckEval t ∧ LegalReadReg t ∧ LegalWriteReg t ∧ LegalReadMem t ∧ LegalWriteMem t ∧ LegalAssumeReg t ∧ LegalAssume t⌝)).
+  ([∗ list] i ↦ _ ∈ replicate 1023 (), (∃ t, instr (0x80020000 + i * 4) (Some t) ∗ ⌜NoEmptyCases t ∧ NoEvent t ∧ NoStuckEval t ∧ LegalReadReg t ∧ LegalWriteReg t ∧ LegalReadMem t ∧ LegalWriteMem t ∧ LegalAssumeReg t ∧ LegalAssume t⌝)).
 
 Definition universal_spec `{!islaG Σ} `{!threadG} csr gpr mem : iProp Σ :=
   F F_mtvec F_pmpcfgs csr gpr mem ∗
@@ -2162,7 +1224,7 @@ Proof.
     rewrite /F_code_addr /F_code_end_addr !bv_unsigned_BV in Hi2 |- *. lia.
   }
   iPoseProof (big_sepL_delete _ _ _ _ Hlk) as "[Helem _]".
-  iPoseProof ("Helem" with "[$Hinsts]") as "[#(%t & Hinst & (%HNoPMP & %HNoEmptyCase & %HNoEvent & %HNoStuck & %HReadReg & %HWriteReg & %HReadMem & %HWriteMem & %HAssumeReg & %HAssume)) _]".
+  iPoseProof ("Helem" with "[$Hinsts]") as "[#(%t & Hinst & (%HNoEmptyCase & %HNoEvent & %HNoStuck & %HReadReg & %HWriteReg & %HReadMem & %HWriteMem & %HAssumeReg & %HAssume)) _]".
   replace (2147614720 + Z.to_nat ((bv_unsigned i - bv_unsigned F_code_addr) `div` 4) * 4) with (bv_unsigned i).
   2:{
     apply bv_extract_divisible in Hi1.
@@ -2177,20 +1239,20 @@ Proof.
   do 5 (destruct csr as [|? csr]; try done).
   do 6 (destruct gpr as [|? gpr]; try done).
   iDestruct "Hfirm" as "(Hmtvec&?&?&?&?&?&?&?&?&Hsys&Hcsr&Hgpr&Hpmp&Hmem)".
-  unfold dorami_firmware.
+  unfold F_with_PC.
   iPoseProof (csr_equiv with "[Hcsr]") as "Hcsr"; first by (iExists [b;b0;b1;b2]; iFrame).
   iPoseProof (gpr_equiv with "[Hgpr]") as "Hgpr"; first by (iExists [b3; b4; b5; b6; b7]; iFrame).
   liARun.
   iApply (mem_mapsto_mapsto_to_uninit with "Hmem").
   Unshelve. all: prepare_sidecond; bv_solve. }
-  clear i Hi1 Hi2 Hlk t HNoPMP HNoEvent HNoEmptyCase HNoStuck HReadReg HWriteReg HReadMem HWriteMem HAssumeReg HAssume.
+  clear i Hi1 Hi2 Hlk t HNoEvent HNoEmptyCase HNoStuck HReadReg HWriteReg HReadMem HWriteMem HAssumeReg HAssume.
   iIntros "[%i (HPC&%Hi1&%Hi2&Hmtvec& Hp0&Hp1&Hp2&Hp3&Hp4&Hp5&Hp6&Hp7&Hsys&Hcsr&Hgpr&Hpmp&Hmem)]".
       assert (Hlk: (replicate 1023 ()) !! (Z.to_nat (((bv_unsigned i) -  (bv_unsigned F_code_addr)) / 4)) = Some ()).
     { apply lookup_replicate. split; first done.
       rewrite /F_code_addr /F_code_end_addr !bv_unsigned_BV in Hi2 |- *; lia.
     }
     iPoseProof (big_sepL_delete _ _ _ _ Hlk) as "[Helem _]".
-    iPoseProof ("Helem" with "[$Hinsts]") as "[#(%t & Hinst & (%HNoPMP & %HNoEmptyCase & %HNoEvent & %HNoStuck & %HReadReg & %HWriteReg & %HReadMem & %HWriteMem & %HAssumeReg & %HAssume)) _]".
+    iPoseProof ("Helem" with "[$Hinsts]") as "[#(%t & Hinst & (%HNoEmptyCase & %HNoEvent & %HNoStuck & %HReadReg & %HWriteReg & %HReadMem & %HWriteMem & %HAssumeReg & %HAssume)) _]".
     replace (2147614720 + Z.to_nat ((bv_unsigned i - bv_unsigned F_code_addr) `div` 4) * 4) with (bv_unsigned i).
     2:{
       apply bv_extract_divisible in Hi1.
@@ -2202,10 +1264,10 @@ Proof.
     iClear "Helem Hinst".
     iApply (valid_trace_contract i t HNoEvent HNoEmptyCase HNoStuck HReadReg HWriteReg HReadMem HWriteMem HAssumeReg HAssume with "[//] [Hsafe]").
     2:{
-    unfold dorami_firmware.
+    unfold F_with_PC.
     liARun; by iFrame. }
     iIntros "Hstate".
-    clear i csr gpr mem Hi1 Hi2 Hcsr Hgpr Hlk t HNoPMP HNoEvent HNoEmptyCase HNoStuck HReadReg HWriteReg HReadMem HWriteMem HAssumeReg HAssume.
+    clear i csr gpr mem Hi1 Hi2 Hcsr Hgpr Hlk t HNoEvent HNoEmptyCase HNoStuck HReadReg HWriteReg HReadMem HWriteMem HAssumeReg HAssume.
     iDestruct "Hstate" as "[%i (HPC&%Hi1&%Hi2&Hfirm)]".
           iDestruct "Hfirm" as "(?&?&?&?&?&?&?&?&?&Hsys&Hcsr&Hgpr&Hpmp&Hmem)".
       iPoseProof (csr_equiv with "Hcsr") as "[%csr [%Hcsr ?]]".
@@ -2221,241 +1283,3 @@ Proof.
       1: simpl; by f_equal.
       1: done.
 Qed.
-
-(* The security comes from rigid information flow, or three things *)
-(* deriving the rigid info flow: *)
-(* 1. Rigid Control Flow *)
-(* 2. Memory Separation *)
-(* 3. Well-Defined Context Switch(Well-Defined Input and Output of Regs)  *)
-
-(* The security of SM is the precondition of that of enclave because *)
-(* enclave is managed by SM. We can assume the property about the enclave *)
-(* program and SM, then prove that the enclave execution holds the *)
-(* integrity and confidentiality. *)
-(*                                                                        *)
-(*                                                                        *)
-(* INTEGRITY in the view point of enclave execution: *)
-(* Assumptions: *)
-(* 1. Monitor's control flow is fixed when P is entered from P_entry. *)
-(* 2. User / Enclave / OS / RT can effect SM only by specified input *)
-(*    (arguments of function call?). *)
-(* 3. Enclave program only read/write the enclave's internal state and *)
-(*    enclave's input, including mem and registers ( and randomness? ). *)
-(* Prove: User / Other Enclave / OS / Firmware can effect Enclave's *)
-(*        state and output only by specified inputs. *)
-(*                                                                        *)
-(*                                                                        *)
-(* CONFIDENTIALITY in the view point of attacker(consider only Firmware): *)
-(* Assumptions: *)
-(* 1. Monitor's state can not be inferred by firmware. *)
-(* 2. Enclave Program outputs is well-defined. *)
-(* Prove: *)
-(* 1. Firmware's state transition is only determined by its own initial *)
-(*    state and I_P(The non-determinism includes randomness from entropy *)
-(*    sources, direct memory accesses from I/O peripherals, etc.) *)
-(*    Or we say, Enclave's state can not be inferred by firmware. *)
-
-(* Since monitor disables interrupt and have no exception by design, *)
-(* the monitor only needs to guarantee that the firmware's resulting *)
-(* state have no effect on the control flow after P_entry. Considering *)
-(* the rigid control transfer, we only need to guarantee that the *)
-(* resulting state of monitor starting from P_entry depends only on the *)
-(* Monitor's mem. *)
-(*                                                                        *)
-
-(* Specific Well-defined Ecall *)
-(* Here the well-definedness means the input, arguments to ecall and *)
-(* ouput, return value, are well defined, two specified subsets of regs. *)
-(* Save the Non-input and Restore the trusted version. *)
-(* Attention: the intersection of Input and Ouput. *)
-Section abstract_SM.
-
-Context `{!islaG Σ} `{!threadG}.
-
-Variable csr0 : list (bv 64).
-Variable gpr0 : list (bv 64).
-Variable ret_Encl_addr : bv 64.
-
-Hypothesis csr0_length : length csr0 = 4%nat.
-Hypothesis gpr0_length : length gpr0 = 5%nat.
-
-Definition E2F_spec (mcause: bv 64) (csr gpr: list (bv 64)) (mem: bv (0x20000 * 8)) : iProp Σ :=
-  P P_mtvec P_pmpcfgs (<[2%nat := mcause]> csr) gpr mem ∗
-  instr_pre (bv_unsigned P2F_code_addr) (
-    ∃ mem', P P_mtvec P_pmpcfgs (<[2%nat := mcause]> csr0) gpr0 mem'
-  ).
-
-Arguments E2F_spec /.
-
-Definition F2E_spec (x10: bv 64) (csr gpr: list (bv 64)) (mem: bv (0x20000 * 8)): iProp Σ :=
-  P P_mtvec P_pmpcfgs csr (<[3%nat := x10]> gpr) mem ∗
-  instr_pre (bv_unsigned ret_Encl_addr) (
-    ∃ mem', P P_mtvec P_pmpcfgs csr0 (<[3%nat := x10]> gpr0) mem'
-  ).
-
-Arguments F2E_spec /.
-
-(* Save the Non-ouput and Restore the untrusted version. *)
-Hypothesis E2F : ∀ (mcause: bv 64) (csr gpr: list (bv 64)) (mem: bv (0x20000 * 8)), ⊢ instr_body (bv_unsigned P_mtvec) (E2F_spec mcause csr gpr mem).
-
-Hypothesis F2E : ∀ (x10: bv 64) (csr gpr: list (bv 64)) (mem: bv (0x20000 * 8)), ⊢ instr_body (bv_unsigned P_code_addr + P_entry_code_size) (F2E_spec x10 csr gpr mem).
-
-Definition leave_Encl mcause csr gpr Pmem Fmem :=
-  Machine P_mtvec P_pmpcfgs (<[2%nat := mcause]> csr) gpr Pmem Fmem.
-
-Arguments leave_Encl /.
-
-Definition start_F mcause Pmem Fmem :=
-  Machine F_mtvec F_pmpcfgs (<[2%nat := mcause]> csr0) (<[2%nat := (BV 64 0x989B989D981E)]> gpr0) Pmem Fmem.
-
-Arguments start_F /.
-
-Definition leave_F x10 csr gpr Pmem Fmem :=
-  Machine F_mtvec SP_pmpcfgs csr (<[3%nat := x10]> gpr) Pmem Fmem.
-
-Arguments leave_F /.
-
-Definition ret_Encl x10 Pmem Fmem :=
-  Machine P_mtvec P_pmpcfgs csr0 (<[3%nat := x10]> gpr0) Pmem Fmem.
-
-Arguments ret_Encl /.
-
-Theorem confidentiality :
-  ∀ (mcause: bv 64) (csr gpr: list (bv 64)) (Pmem: bv (0x20000 * 8)) (Fmem: bv (0x1000 * 8)),
-  length csr = 4%nat ->
-  length gpr = 5%nat ->
-  (∃ v, csr !! 0%nat = Some v ∧ (bv_extract 3 1 v) = (BV 1 0x0)) ->
-  ⊢
-  instr (bv_unsigned F_code_addr - 0x2c) (Some P2F.a0.a0) -∗
-  instr (bv_unsigned F_code_addr - 0x28) (Some P2F.a4.a4) -∗
-  instr (bv_unsigned F_code_addr - 0x24) (Some P2F.a8.a8) -∗
-  instr (bv_unsigned F_code_addr - 0x20) (Some P2F.ac.ac) -∗
-  instr (bv_unsigned F_code_addr - 0x1c) (Some P2F.a10.a10) -∗
-  instr (bv_unsigned F_code_addr - 0x18) (Some P2F.a14.a14) -∗
-  instr (bv_unsigned F_code_addr - 0x14) (Some P2F.a18.a18) -∗
-  instr (bv_unsigned F_code_addr - 0x10) (Some P2F.a1c.a1c) -∗
-  instr (bv_unsigned F_code_addr - 0xc) (Some P2F.a20.a20) -∗
-  instr (bv_unsigned F_code_addr - 0x8) (Some P2F.a24.a24) -∗
-  instr (bv_unsigned F_code_addr - 0x4) (Some P2F.a28.a28) -∗
-  instr_body (bv_unsigned P_mtvec) (
-    Machine P_mtvec P_pmpcfgs (<[2%nat := mcause]> csr) gpr Pmem Fmem ∗
-    instr_pre (bv_unsigned F_code_addr)
-      (∃ Pmem', Machine F_mtvec F_pmpcfgs (<[2%nat := mcause]> csr0) (<[2%nat := (BV 64 0x989B989D981E)]> gpr0) Pmem' Fmem)
-  ).
-Proof using E2F H csr0 csr0_length gpr0 gpr0_length ret_Encl_addr.
-  intros mcause csr gpr Pmem Fmem Hcsr Hgpr.
-  do 5 (destruct csr as [|? csr]; try inversion Hcsr).
-  do 6 (destruct gpr as [|? gpr]; try inversion Hgpr).
-  destruct csr0 as [|? csr0'] eqn:Hcsr0 ; try inversion csr0_length.
-  destruct gpr0 as [|? gpr0'] eqn:Hgpr0 ; try inversion gpr0_length.
-  do 4 (destruct csr0' as [|? csr0']; try inversion csr0_length).
-  do 5 (destruct gpr0' as [|? gpr0']; try inversion gpr0_length).
-  clear H1 H2 H3 H4 H5 H6 H7 H8 H9 H10 H11 H12 H13 H14 H15 H16 H17 H18 Hcsr Hgpr.
-  intros [ms [[= <-] Hms]].
-  iStartProof.
-  iPoseProof (E2F mcause [b; b0; mcause; b2] [b3; b4; b5; b6; b7] Pmem) as "HE2F".
-  liARun.
-  rewrite Hcsr0 Hgpr0.
-  iPoseProof (P2F [b8; b10; mcause; b12] [b9; b13; b14; b15; b16] Pmem with "[$] [$] [$] [$] [$] [$] [$] [$] [$] [$] [$]") as "HP2F"; try done.
-  liSimpl.
-  liARun.
-  iFrame.
-  Unshelve. all: prepare_sidecond.
-  all: bv_solve.
-Qed.
-
-Theorem integrity :
-  ∀ (x10: bv 64) (csr gpr: list (bv 64)) Pmem Fmem,
-  length csr = 4%nat ->
-  length gpr = 5%nat ->
-  ⊢
-  instr (bv_unsigned SP_code_addr) (Some Sally_Port.a0.a0) -∗
-  instr (bv_unsigned SP_code_addr + 0x4) (Some Sally_Port.a4.a4) -∗
-  instr (bv_unsigned SP_code_addr + 0x8) (Some Sally_Port.a8.a8) -∗
-  instr (bv_unsigned SP_code_addr + 0xc) (Some Sally_Port.ac.ac) -∗
-  instr (bv_unsigned SP_code_addr + 0x10) (Some Sally_Port.a10.a10) -∗
-  instr (bv_unsigned SP_code_addr + 0x14) (Some Sally_Port.a14.a14) -∗
-  instr (bv_unsigned SP_code_addr + 0x18) (Some Sally_Port.a18.a18) -∗
-  instr (bv_unsigned SP_code_addr + 0x1c) (Some Sally_Port.a1c.a1c) -∗
-  instr (bv_unsigned SP_code_addr + 0x20) (Some Sally_Port.a20.a20) -∗
-  instr (bv_unsigned SP_code_addr + 0x24) (Some Sally_Port.a24.a24) -∗
-  instr (bv_unsigned SP_code_addr + 0x28) (Some Sally_Port.a28.a28) -∗
-  instr (bv_unsigned SP_code_addr + 0x2c) (Some Sally_Port.a2c.a2c) -∗
-  instr (bv_unsigned P_code_addr) (Some P_entry.a0.a0) -∗
-  instr (bv_unsigned P_code_addr + 0x4) (Some P_entry.a4.a4) -∗
-  instr (bv_unsigned P_code_addr + 0x8) (Some P_entry.a8.a8) -∗
-  instr (bv_unsigned P_code_addr + 0xc) (Some P_entry.ac.ac) -∗
-  instr (bv_unsigned P_code_addr + 0x10) (Some P_entry.a10.a10) -∗
-  instr (bv_unsigned P_code_addr + 0x14) (Some P_entry.a14.a14) -∗
-  instr (bv_unsigned P_code_addr + 0x18) (Some P_entry.a18.a18) -∗
-  (∃ ins, instr ((bv_unsigned P_code_addr + 0x1c)) (Some ins)) -∗
-  instr_body (bv_unsigned SP_code_addr) (
-    Machine F_mtvec SP_pmpcfgs csr (<[3%nat := x10]> gpr) Pmem Fmem ∗
-    instr_pre (bv_unsigned ret_Encl_addr)
-      (∃ Pmem', Machine P_mtvec P_pmpcfgs csr0 (<[3%nat := x10]> gpr0) Pmem' Fmem)
-  ).
-Proof using F2E H csr0 csr0_length gpr0 gpr0_length ret_Encl_addr.
-  intros x10 csr gpr Pmem Fmem Hcsr Hgpr.
-  do 5 (destruct csr as [|? csr]; try inversion Hcsr).
-  do 6 (destruct gpr as [|? gpr]; try inversion Hgpr).
-  destruct csr0 as [|? csr0'] eqn:Hcsr0 ; try inversion csr0_length.
-  destruct gpr0 as [|? gpr0'] eqn:Hgpr0 ; try inversion gpr0_length.
-  do 4 (destruct csr0' as [|? csr0']; try inversion csr0_length).
-  do 5 (destruct gpr0' as [|? gpr0']; try inversion gpr0_length).
-  clear H1 H2 H3 H4 H5 H6 H7 H8 H9 H10 H11 H12 H13 H14 H15 H16 H17 H18 Hcsr Hgpr.
-  iStartProof.
-  iIntros "? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? Hret".
-  iPoseProof (SP2P_entry [b; b0; b1; b2] [b3; b4; b5; x10; b7] with "[$] [$] [$] [$] [$] [$] [$] [$] [$] [$] [$] [$]") as "HP2P_entry"; try done.
-  liARun.
-  iPoseProof (F2E x10 [ms; b0; b1; b2] [b3; b4; LET9; x10; b7] Pmem) as "HF2E".
-  liARun.
-  rewrite Hcsr0.
-  liARun.
-  iExists (mem', ())ₗ.
-  liARun.
-  rewrite Hgpr0.
-  liARun.
-  iFrame.
-  Unshelve. all: prepare_sidecond.
-  all: bv_solve.
-Qed.
-
-End abstract_SM.
-
-(* Information Flow: *)
-(* Ecall Enclave -> SM : Ecall Arguments by regs *)
-(* Ocall Enclave -> SM : Ecall Arguments by regs and host shared mem *)
-(* OS -> SM : Ecall Arguments by regs and host shared mem *)
-(* Firmware -> SM : well-defined subset of regs *)
-(* SM -> Firmware : Ecall Arguments / Exception No. / Int No. *)
-(* SM -> Enclave: *)
-(* Ecall / Non-Timer Trap : well-defined subset of regs *)
-(* Enclave Mgmt / Ocall Case: well-defined subset of regs and host shared *)
-(* mem *)
-
-
-(* Intgrity Guarantee: Enclave execution is fully decided by the Input *)
-(* and Enclave's Internal State. => the internal Enclave State are still *)
-(* same after the same Enclave instruction and Input and State even other *)
-(* things are different. *)
-(* => Input Seq and Init Config fully determines Enclave Execution. *)
-(* Input(OS via SM): subset of regs, host shared mem. *)
-(* Input(FM via SM): subset of regs. *)
-(* Input(Env via SM): subset of regs, host shared mem. *)
-
-(* Confidentiality: Firmware's execution is fully decided by the public *)
-(* State Vars. => the puibc State Vars are still same after the same *)
-(* Firmware instructions if they are same before, even the enclave state *)
-(* is different. *)
-(* => Public State Seq and Init fully determines the Firmware Execution. *)
-(* Output: the whole resulting machine State. The condition is that the *)
-(* observable part of State cannot leak. => same as before. *)
-(* observable part. *)
-
-(* Requirement: state after P_entry is fully determined by enclave's data *)
-(* region, the mem part except the general registers. *)
-(* Integrity: the firmware's state and input non-intefere the enclave's *)
-(* state. *)
-(* Confidentiality: the enclave's state and input non-interfere the *)
-(* resulting states observable by firmware. *)
-(* Inherit GPR and recover CSR. *)
