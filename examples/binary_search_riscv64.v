@@ -183,7 +183,6 @@ Lemma binary_search_loop :
 Proof.
 (*PROOF_START*)
   iStartProof.
-  liAStep; liShow.
   liARun.
   Unshelve. all: prepare_sidecond.
   all: try bv_solve.

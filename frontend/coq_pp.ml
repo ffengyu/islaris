@@ -321,12 +321,18 @@ let pp_event ff e =
       pp "Smt (%a) %a" pp_smt s pp_lrng a
   | Ast.Branch(i,s,a)              ->
       pp "Branch %a %a %a" pp_Z i pp_str s pp_lrng a
+      (* When there is only on field, add this field to the accessor list *)
+      (* because the read/write semantic of struct reg is inconsistent *)
+      (* between Islaris and Isla. *)
   | Ast.ReadReg(r,Nil,(RegVal_Struct([(fname, _)]) as v),a) ->
       pp "ReadReg %a %a (%a) %a" pp_sail_name r pp_accessor_list (Ast.Cons([Field(fname)]))
         pp_valu v pp_lrng a
   | Ast.ReadReg(r,l,v,a)           ->
       pp "ReadReg %a %a (%a) %a" pp_sail_name r pp_accessor_list l
         pp_valu v pp_lrng a
+      (* When there is only on field, add this field to the accessor list *)
+      (* because the read/write semantic of struct reg is inconsistent *)
+      (* between Islaris and Isla. *)
   | Ast.WriteReg(r,Nil,(RegVal_Struct([(fname, _)]) as v),a) ->
       pp "WriteReg %a %a (%a) %a" pp_sail_name r pp_accessor_list (Ast.Cons([Field(fname)]))
         pp_valu v pp_lrng a

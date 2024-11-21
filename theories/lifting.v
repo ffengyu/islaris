@@ -84,9 +84,6 @@ Proof. apply of_to_val. by apply TCEq_eq. Qed.
 Local Hint Extern 0 (reducible _ _) => eexists _, _, _, _; simpl : core.
 
 
-(* YIQUN: With regs GS, any local_state with trace e can safely reduces. *)
-(* WP means the reduction is not stuck and all the generated events follow *)
-(* the spec. *)
 Definition wp_asm_def `{!Arch} `{!islaG Σ} `{!threadG} (e : isla_trace) : iProp Σ :=
   (∀ θ,
       ⌜θ.(seq_trace) = e⌝ -∗
@@ -100,7 +97,6 @@ Definition wp_asm_eq `{!Arch} `{!islaG Σ} `{!threadG} : wp_asm = @wp_asm_def _ 
 
 Notation WPasm := wp_asm.
 
-(* YIQUN: the al field in register r satisfies the predicate G. *)
 Definition wpreadreg_def `{!islaG Σ} `{!threadG}
      (r : sail_name) (al : accessor_list) (G : valu → iProp Σ) : iProp Σ :=
   ∀ regs, regs_ctx regs -∗
@@ -114,10 +110,6 @@ Notation "'WPreadreg' r '@' al {{ v , G } }" := (wpreadreg r al (λ v, G%I))
   (at level 20, r, al, G at level 200,
    format "'[' 'WPreadreg'  r  '@'  al  '/' '[   ' {{  v ,  G  } } ']' ']'") : bi_scope.
 
-(* YIQUN: If there is φ can guarantee the safety of isla_trace t. Then *)
-(* we can cons the event e. It says than in what condition we can cons *)
-(* e to t. The condition is φ -* WPasm t. It's probably to prove this *)
-(* only for some very "pure" event because it's too strong. *)
 Definition wp_event_def `{!Arch} `{!islaG Σ} `{!threadG} (e : event) (Φ : iProp Σ) : iProp Σ :=
   ∀ t, (Φ -∗ WPasm t) -∗ WPasm (e:t:t).
 Definition wp_event_aux `{!Arch} `{!islaG Σ} `{!threadG} : seal (@wp_event_def _ _ _ _). by eexists. Qed.
@@ -128,9 +120,6 @@ Notation "'WPevent' e {{ Φ } }" := (wp_event e Φ)
   (at level 20, e, Φ at level 200,
    format "'[' 'WPevent'  e  '/' '[   ' {{  Φ  } } ']' ']'") : bi_scope.
 
-(* YIQUN: With the antecedent P, if the isla_trace at instr address a is *)
-(* Some t, then t is safe when pc points to t; if the isla_trace is empty, *)
-(* then the SInstrTrap event satisfies the current spec Pκs *)
 Definition instr_pre'_def `{!Arch} `{!islaG Σ} `{!threadG} (is_later : bool) (a : Z) (P : iProp Σ) : iProp Σ :=
   ▷?is_later (
   P -∗
@@ -148,7 +137,6 @@ Definition instr_pre'_eq `{!Arch} `{!islaG Σ} `{!threadG} : instr_pre' = @instr
 Notation instr_pre := (instr_pre' true).
 Notation instr_body := (instr_pre' false).
 
-(* YIQUN: expr e reduces to v and v satisfies φ. *)
 Definition wp_exp_def `{!islaG Σ} (e : exp) (Φ : base_val → iProp Σ) : iProp Σ :=
   (∃ v, ⌜eval_exp e = Some v⌝ ∗ Φ v).
 Definition wp_exp_aux `{!islaG Σ} : seal (@wp_exp_def Σ _). by eexists. Qed.
@@ -161,7 +149,6 @@ Notation "'WPexp' e {{ v , Q } }" := (wp_exp e (λ v, Q))
   (at level 20, e, Q at level 200,
    format "'[' 'WPexp'  e  '/' '[   ' {{  v ,  Q  } } ']' ']'") : bi_scope.
 
-(* YIQUN: a_expr e reduces to v and v satisfies φ. *)
 Definition wp_a_exp_def `{!islaG Σ} `{!threadG} (e : a_exp) (Φ : base_val → iProp Σ) : iProp Σ :=
   (∀ regs, thread_ctx regs -∗ ∃ v, ⌜eval_a_exp regs e = Some v⌝ ∗ thread_ctx regs ∗ Φ v).
 Definition wp_a_exp_aux `{!islaG Σ} `{!threadG} : seal (@wp_a_exp_def Σ _ _). by eexists. Qed.
@@ -209,7 +196,6 @@ Section lifting.
   Proof. by rewrite wp_a_exp_eq. Qed.
 
   (** * Proof mode instances *)
-  (* YIQUN: the bupd and fupd can be elim with goal WPasm like WP. *)
   Global Instance elim_modal_bupd_wp_asm p P es :
     ElimModal True p false (|==> P) P (WPasm es) (WPasm es).
   Proof.
@@ -255,8 +241,6 @@ Section lifting.
     WPasm (e:t:t).
   Proof. rewrite wp_event_eq. iIntros "Hwp HΦ". by iApply "Hwp". Qed.
 
-  (* YIQUN: because weaker condition guarantees safety is more strong *)
-  (* conditon. *)
   Lemma wp_event_mono e Φ Φ':
     WPevent e {{ Φ }} -∗
     (Φ -∗ Φ') -∗
@@ -267,7 +251,6 @@ Section lifting.
   Qed.
 
   (** * Next instruction & instr_pre'  *)
-
   Lemma wp_next_instr (PC : bv 64) ins :
     arch_pc_reg ↦ᵣ RVal_Bits PC -∗
     instr (bv_unsigned PC) (Some ins) -∗
@@ -279,12 +262,8 @@ Section lifting.
     iApply wp_lift_step; [done|].
     iIntros (σ1 ??? ?) "(Hsctx&Hictx&?)".
     iApply fupd_mask_intro; first set_solver. iIntros "HE".
-    (* YIQUN: the two destruction converts the ghost state to the pure *)
-    (* pure assertion so we can know it all time. Actually, they are both *)
-    (* persistent because they are just a kind of knowledge. *)
     iDestruct (reg_mapsto_lookup with "Hθ HPC") as %HPC.
     iDestruct (instr_lookup_unsigned with "Hictx Hi") as %?.
-    (* YIQUN: this is the standard way of solving the reducible condition. *)
     iSplit. {
       iPureIntro. eexists _, _, _, _; simpl. econstructor; [done |by econstructor|]; simpl.
       split; [done|]. eexists _. by simplify_option_eq.
@@ -298,32 +277,6 @@ Section lifting.
     iFrame.
   Qed.
 
-  (* YIQUN-TODO: elim later in the execution. *)
-  Lemma wp_elim_later P e t:
-    (P -∗ WPasm (t)) ⊢ (▷ P -∗ WPasm (e:t:t)).
-  Abort.
-  (* YIQUN: the Lemma wp_next_instr can be rephrased in hoare style. *)
-  Lemma wp_next_instr_1 (PC : bv 64) ins :
-    instr (bv_unsigned PC) (Some ins) -∗
-    ▷ (arch_pc_reg ↦ᵣ RVal_Bits PC -∗ WPasm ins) -∗
-    (arch_pc_reg ↦ᵣ RVal_Bits PC -∗ WPasm tnil).
-  Abort.
-  (* YIQUN: the difference between wp_next_instr_1 and one on the paper *)
-  (* is that we condiser the persistency of instr. The rule on paper is *)
-  (* the follwing. The existent of later mod makes the lemma stronger. *)
-  (* We can elim it after the wp_lift_step(or other similar lifting lemma) *)
-  (* because there is mod in the goal. This elim of later can be proved *)
-  (* by the intro_later and sep_later and later_mono. It makes sense cuz *)
-  (* if we want to prove the goal is right in the next step, then all the *)
-  (* hypo can move to the next step and the later mod is elim. *)
-  Lemma wp_next_instr_2 (PC : bv 64) ins :
-    ▷ (instr (bv_unsigned PC) (Some ins) ∗ arch_pc_reg ↦ᵣ RVal_Bits PC -∗ WPasm ins) -∗
-    (instr (bv_unsigned PC) (Some ins) ∗ arch_pc_reg ↦ᵣ RVal_Bits PC -∗ WPasm tnil).
-  Abort.
-
-  (* YIQUN: if there is no next instr. *)
-  (* YIQUN: only with the spec satisfying the generated event, we can upd *)
-  (* the spec_ctx(κ :: κs) to spec_ctx(κs). *)
   Lemma wp_next_instr_extern (PC : bv 64) (Pκs : spec):
     Pκs [SInstrTrap PC] →
     arch_pc_reg ↦ᵣ RVal_Bits PC -∗
@@ -352,9 +305,6 @@ Section lifting.
     Unshelve. apply: tnil.
   Qed.
 
-  (* YIQUN: the inter_pre contains two branches and both can infer the *)
-  (* P -* WP tnil. This lemma can be considered as the interpretaion of *)
-  (* the instr_pre': P can guarantee the safety of WPasm instr at addr a. *)
   Lemma wp_next_instr_pre (PC : bv 64) P l:
     arch_pc_reg ↦ᵣ RVal_Bits PC -∗
     instr_pre' l (bv_unsigned PC) P -∗
@@ -370,14 +320,6 @@ Section lifting.
     - iDestruct "Hwp" as (?) "[>% Hwp]".
       by iApply (wp_next_instr_extern with "[$] [$] [$]").
   Qed.
-
-  Lemma wp_next_instr_pre' (PC : bv 64) P l t:
-    arch_pc_reg ↦ᵣ RVal_Bits PC -∗
-    instr (bv_unsigned PC) (Some t) -∗
-    instr_pre' l (bv_unsigned PC) P -∗
-    P -∗
-    WPasm t.
-  Abort.
 
   Lemma instr_pre_wand a1 a2 l1 l2 P Q:
     implb l1 l2 →
@@ -399,7 +341,6 @@ Section lifting.
     instr_pre a P.
   Proof. rewrite instr_pre'_eq. iIntros "?". done. Qed.
 
-  (* YIQUN: what the 1st branch in isntr_pre' says is the antecedents. *)
   Lemma instr_pre_intro_Some l P ins a:
     instr a (Some ins) -∗
     (P -∗ arch_pc_reg ↦ᵣ RVal_Bits (Z_to_bv 64 a) -∗ WPasm ins) -∗
@@ -412,7 +353,6 @@ Section lifting.
     iIntros "HPC". iApply ("Hwp" with "[$] [$]").
   Qed.
 
-  (* YIQUN: what the 2nd branch in instr_pre' says is the antecedents. *)
   Lemma instr_pre_intro_None P a l:
     instr a None -∗
     (P -∗ ∃ Pκs, ⌜Pκs [SInstrTrap (Z_to_bv 64 a)]⌝ ∗ spec_trace Pκs) -∗
@@ -474,7 +414,6 @@ Section lifting.
     split; [done|]. rewrite /read_accessor/=. by simplify_option_eq.
   Qed.
 
-  (* YIQUN: relate the WPreadreg to WPasm. *)
   Lemma wp_read_reg r v vread ann es al:
     read_accessor al v = Some vread →
     WPreadreg r @ al {{ v', ⌜vread = v'⌝ -∗ WPasm es }} -∗
@@ -624,8 +563,6 @@ Section lifting.
     iIntros (?) "Hl". iApply ("Hcont" with "[//]"). by iApply "Hm".
   Qed.
 
-  (* YIQUN: the mmio_range guarantees that the [a, a+len] is not in the *)
-  (* dom of heap_mem at all. *)
   Lemma wp_read_mmio n len a (vread : bv _) es ann kind tag (Pκs : spec):
     n = (8 * len)%N →
     0 < Z.of_N len →
@@ -853,11 +790,6 @@ Section lifting.
     iFrame.
   Qed.
 
-  (* YIQUN: discuss the difference between assume and assert. *)
-  (* Assert: return value v can be false and in this case we don't have *)
-  (* WPasm es because we "assert" the truth but get the false. In this *)
-  (* case, we can say the precondition proof is contradictory and don't *)
-  (* need to prove.*)
   Lemma wp_assert es ann e:
     WPexp e {{ v, ∃ b, ⌜v = Val_Bool b⌝ ∗ (⌜b = true⌝ -∗ WPasm es) }} -∗
     WPasm (Smt (Assert e) ann :t: es).
@@ -879,10 +811,6 @@ Section lifting.
     iApply "Hcont"; [done..|iFrame].
   Qed.
 
-  (* YIQUN: discuss the difference between assume and assert. *)
-  (* Assume: the return value v must be true otherwise the proof is *)
-  (* stuck because we "assume" this and the proof can go on only if the *)
-  (* assumption is true. *)
   Lemma wp_assume es ann e:
     WPaexp e {{ v, ⌜v = Val_Bool true⌝ ∗ WPasm es }} -∗
     WPasm (Assume e ann :t: es).
@@ -993,12 +921,6 @@ Section exp_lifting.
     WPaexp (AExp_Val (AVal_Enum b) ann) {{ Φ }}.
   Proof. rewrite wp_a_exp_unfold. iIntros "?" (?) "?". iExists _. by iFrame. Qed.
 
-  (* YIQUN: the foldr executing twice gives *)
-  (* set ψ = (λ vs, ∃ v, ⌜eval_manyop op vs = Some v⌝ ∗ Φ v) *)
-  (* λ vs, WPexp e2 {{v2. WPexp e1 {{v1. ψ (vs ++ [v2] ++ [v1])}}}} *)
-  (* From this unfolding, the results applied to [] is *)
-  (* The e1,..,en after eval can makes sure the `manyop op es` reduces *)
-  (* to the existential var v. *)
   Lemma wpe_manyop op es Φ ann:
     foldr (λ e Ψ, λ vs, WPexp e {{ v, Ψ (vs ++ [v]) }}) (λ vs, ∃ v, ⌜eval_manyop op vs = Some v⌝ ∗ Φ v) es [] -∗
     WPexp (Manyop op es ann) {{ Φ }}.

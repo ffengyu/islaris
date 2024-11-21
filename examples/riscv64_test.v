@@ -82,28 +82,6 @@ Lemma riscv_test `{!islaG Σ} `{!threadG} (x2 x11 : bv 64):
   ).
 Proof.
   iStartProof.
-  do 100 liAStep; liShow.
-  liAStep; liShow.
-  liAStep; liShow.
-  liAStep; liShow.
-  liAStep; liShow.
-  liAStep; liShow.
-  liAStep; liShow.
-  liAStep; liShow.
-  liAStep; liShow.
-  liAStep; liShow.
-  liAStep; liShow.
-  liAStep; liShow.
-  liAStep; liShow.
-  liAStep; liShow.
-  liAStep; liShow.
-  liAStep; liShow.
-  liAStep; liShow.
-  liAStep; liShow.
-  liAStep; liShow.
-  liAStep; liShow.
-  liAStep; liShow.
-  liAStep; liShow..
   Time repeat liAStep; liShow.
   Unshelve. all: prepare_sidecond.
   - rewrite /riscv_test_spec sif_true //. normalize_and_simpl_goal => //; bv_solve.

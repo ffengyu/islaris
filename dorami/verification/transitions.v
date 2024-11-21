@@ -1,5 +1,23 @@
 From isla.dorami Require Import model.
 
+(* This frame rule is the base of the following separated proof. *)
+(* Without this frame rule, we cannot compose them together. *)
+(* This rule doesn't necessarily hold because they are not equiv to *)
+(* weakest precondition. *)
+(* As we show in F_universal_contract, instr_pre has less expressiveness *)
+(* power than weeakestpre in safety but instr_pre can express not only *)
+(* safety. *)
+Lemma instrpre_frame `{!islaG Σ} `{!threadG} (start_addr end_addr: bv 64) (P Q R: iProp Σ) :
+  instr_body (bv_unsigned start_addr) (P ∗ instr_pre (bv_unsigned end_addr) Q) ⊢
+  instr_body (bv_unsigned start_addr) (P ∗ R ∗ instr_pre (bv_unsigned end_addr) (Q ∗ R)).
+Proof.
+  iIntros "Hpre".
+  iApply (instr_pre_wand with "Hpre"); try done.
+  iIntros "(?&?&Hpre)"; iFrame.
+  iApply (instr_pre_wand with "Hpre"); try done.
+  by iIntros; iFrame.
+Qed.
+
 (* The specification of transition from P to F *)
 Definition P2F_spec `{!islaG Σ} `{!threadG} (csr gpr: list (bv 64)) (mem: (bv (0x20000 * 8))) : iProp Σ :=
   P P_mtvec P_pmpcfgs csr gpr mem ∗
@@ -57,7 +75,7 @@ Definition SP_a0_spec `{!islaG Σ} `{!threadG}  (csr gpr: list (bv 64)) : iProp 
 
 Arguments SP_a0_spec /.
 
-Theorem a0_spec `{!islaG Σ} `{!threadG} :
+Theorem SP_a0 `{!islaG Σ} `{!threadG} :
   ∀ csr gpr,
   length csr = 4%nat ->
   length gpr = 5%nat ->
@@ -117,7 +135,7 @@ Proof.
   do 6 (destruct gpr as [|? gpr]; try done).
   iStartProof.
   iIntros.
-  iPoseProof (a0_spec [b; b0; b1; b2] [b3; b4; b5; b6; b7] with "[$]") as "Ha0_spec"; try done.
+  iPoseProof (SP_a0 [b; b0; b1; b2] [b3; b4; b5; b6; b7] with "[$]") as "Ha0_spec"; try done.
   liARun.
   iExists (ms, ())ₗ.
   liARun.

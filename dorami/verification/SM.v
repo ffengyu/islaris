@@ -5,13 +5,18 @@ Section SM.
 
 Context `{!islaG Σ} `{!threadG}.
 
+(* Default value of csr/gpr, for example all zeros, represents the info that *)
+(* do not contain any useful information. *)
 Variable csr0 : list (bv 64).
 Variable gpr0 : list (bv 64).
+(* The addr before the instruction to return to Enclave. *)
 Variable ret_Encl_addr : bv 64.
 
 Hypothesis csr0_length : length csr0 = 4%nat.
 Hypothesis gpr0_length : length gpr0 = 5%nat.
 
+(* F only sees the mcause passed from Enclave. All the other information *)
+(* F sees is the default values csr0 and gpr0. *)
 Definition E2F_spec (mcause: bv 64) (csr gpr: list (bv 64)) (mem: bv (0x20000 * 8)) : iProp Σ :=
   P P_mtvec P_pmpcfgs (<[2%nat := mcause]> csr) gpr mem ∗
   instr_pre (bv_unsigned P2F_code_addr) (
@@ -20,6 +25,8 @@ Definition E2F_spec (mcause: bv 64) (csr gpr: list (bv 64)) (mem: bv (0x20000 * 
 
 Arguments E2F_spec /.
 
+(* Enclave only sees the x10 passed from F. Other the other information *)
+(* Enclave sees is the default values csr0 and gpr0. *)
 Definition F2E_spec (x10: bv 64) (csr gpr: list (bv 64)) (mem: bv (0x20000 * 8)): iProp Σ :=
   P P_mtvec P_pmpcfgs csr (<[3%nat := x10]> gpr) mem ∗
   instr_pre (bv_unsigned ret_Encl_addr) (
@@ -28,31 +35,39 @@ Definition F2E_spec (x10: bv 64) (csr gpr: list (bv 64)) (mem: bv (0x20000 * 8))
 
 Arguments F2E_spec /.
 
-(* Save the Non-ouput and Restore the untrusted version. *)
+(* P_mtvec represents the first instruction after the transition from *)
+(* Enclave to P. *)
 Hypothesis E2F : ∀ (mcause: bv 64) (csr gpr: list (bv 64)) (mem: bv (0x20000 * 8)), ⊢ instr_body (bv_unsigned P_mtvec) (E2F_spec mcause csr gpr mem).
 
 Hypothesis F2E : ∀ (x10: bv 64) (csr gpr: list (bv 64)) (mem: bv (0x20000 * 8)), ⊢ instr_body (bv_unsigned P_code_addr + P_entry_code_size) (F2E_spec x10 csr gpr mem).
 
+(* The state justing leaving the enclave and entering P. *)
 Definition leave_Encl mcause csr gpr Pmem Fmem :=
   Machine P_mtvec P_pmpcfgs (<[2%nat := mcause]> csr) gpr Pmem Fmem.
 
 Arguments leave_Encl /.
 
+(* The state just entering F from P *)
 Definition start_F mcause Pmem Fmem :=
   Machine F_mtvec F_pmpcfgs (<[2%nat := mcause]> csr0) (<[2%nat := (BV 64 0x989B989D981E)]> gpr0) Pmem Fmem.
 
 Arguments start_F /.
 
+(* The state justing leaving F and entering P. *)
 Definition leave_F x10 csr gpr Pmem Fmem :=
   Machine F_mtvec SP_pmpcfgs csr (<[3%nat := x10]> gpr) Pmem Fmem.
 
 Arguments leave_F /.
 
+(* The state entering Enclave in the next instruciton *)
 Definition ret_Encl x10 Pmem Fmem :=
   Machine P_mtvec P_pmpcfgs csr0 (<[3%nat := x10]> gpr0) Pmem Fmem.
 
 Arguments ret_Encl /.
 
+(* This theorem shows that no matter what information enclave pass to P *)
+(* and how P use this secret, the only thing F can see is the mcause *)
+(* except the default values. *)
 Theorem confidentiality :
   ∀ (mcause: bv 64) (csr gpr: list (bv 64)) (Pmem: bv (0x20000 * 8)) (Fmem: bv (0x1000 * 8)),
   length csr = 4%nat ->
@@ -97,6 +112,10 @@ Proof using E2F H csr0 csr0_length gpr0 gpr0_length ret_Encl_addr.
   all: bv_solve.
 Qed.
 
+(* This theorem shows that no matter what information F pass to P *)
+(* and how P use this secret, the only thing Encl can see is the x10 *)
+(* except the default values and it will finally returns to Enclave *)
+(* directly without nesting call of F. *)
 Theorem integrity :
   ∀ (x10: bv 64) (csr gpr: list (bv 64)) Pmem Fmem,
   length csr = 4%nat ->
@@ -154,41 +173,3 @@ Proof using F2E H csr0 csr0_length gpr0 gpr0_length ret_Encl_addr.
 Qed.
 
 End SM.
-
-(* Information Flow: *)
-(* Ecall Enclave -> SM : Ecall Arguments by regs *)
-(* Ocall Enclave -> SM : Ecall Arguments by regs and host shared mem *)
-(* OS -> SM : Ecall Arguments by regs and host shared mem *)
-(* Firmware -> SM : well-defined subset of regs *)
-(* SM -> Firmware : Ecall Arguments / Exception No. / Int No. *)
-(* SM -> Enclave: *)
-(* Ecall / Non-Timer Trap : well-defined subset of regs *)
-(* Enclave Mgmt / Ocall Case: well-defined subset of regs and host shared *)
-(* mem *)
-
-
-(* Intgrity Guarantee: Enclave execution is fully decided by the Input *)
-(* and Enclave's Internal State. => the internal Enclave State are still *)
-(* same after the same Enclave instruction and Input and State even other *)
-(* things are different. *)
-(* => Input Seq and Init Config fully determines Enclave Execution. *)
-(* Input(OS via SM): subset of regs, host shared mem. *)
-(* Input(FM via SM): subset of regs. *)
-(* Input(Env via SM): subset of regs, host shared mem. *)
-
-(* Confidentiality: Firmware's execution is fully decided by the public *)
-(* State Vars. => the puibc State Vars are still same after the same *)
-(* Firmware instructions if they are same before, even the enclave state *)
-(* is different. *)
-(* => Public State Seq and Init fully determines the Firmware Execution. *)
-(* Output: the whole resulting machine State. The condition is that the *)
-(* observable part of State cannot leak. => same as before. *)
-(* observable part. *)
-
-(* Requirement: state after P_entry is fully determined by enclave's data *)
-(* region, the mem part except the general registers. *)
-(* Integrity: the firmware's state and input non-intefere the enclave's *)
-(* state. *)
-(* Confidentiality: the enclave's state and input non-interfere the *)
-(* resulting states observable by firmware. *)
-(* Inherit GPR and recover CSR. *)

@@ -80,6 +80,9 @@ let event_filter : Arch.t -> int -> event -> bool = fun arch i e ->
   | WriteReg(n,_,_,_) when ignored n                     -> false
   | ReadReg(_,_,_,_)
   | Smt(Assert(_), _) when !no_aggressive_simplification -> true
+  (* When there is accessors in ReadReg, ignore it because the *)
+  (* read/writesemantic of struct reg is inconsistent between Islaris *)
+  (* and Isla. *)
   | ReadReg(_,Cons(_),RegVal_Struct(_),_)                -> true
   | ReadReg(_,_,v,_)                                     -> is_symbolic v
   | Smt(Assert(_), _)                                    -> i = 0

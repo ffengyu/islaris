@@ -226,10 +226,6 @@ Definition normalize_instr_addr {Σ} (a1 : Z) (T : Z → iProp Σ) : iProp Σ :=
 Arguments normalize_instr_addr : simpl never.
 Global Typeclasses Opaque normalize_instr_addr.
 
-(* YIQUN: Quoted from coqdoc, In the record form, the fields can be given *)
-(* in any order. Fields that can be inferred by unification or by using *)
-(* obligations (see Program) may be omitted. H in def reps bv_wrap eq in *)
-(* the implication. *)
 Program Definition normalize_instr_addr_hint {Σ} a1 a2 :
   (bv_wrap 64 a1 = bv_wrap 64 a2) →
   LiTactic (normalize_instr_addr (Σ:=Σ) a1) := λ H, {|
@@ -285,8 +281,6 @@ Global Hint Extern 10 (LiTactic (normalize_instr_addr _)) =>
 
 
 (** * [normalize_bv_wrap] *)
-(* YIQUN: T is the continuation. This definition says that, if the *)
-(* leftmost conjunction is a bv eq, how should we deduce next step. *)
 Definition normalize_bv_wrap {Σ} (a1 : Z) (T : Z → iProp Σ) : iProp Σ :=
   ∃ a2, ⌜bv_wrap 64 a1 = bv_wrap 64 a2⌝ ∗ T a2.
 Arguments normalize_bv_wrap : simpl never.
@@ -400,7 +394,6 @@ Global Hint Extern 10 (LiTactic (compute_wp_exp _)) =>
   eapply compute_wp_exp_hint; solve_compute_wp_exp : typeclass_instances.
 
 (** ** [regcol_compute_hint] *)
-(* YIQUN: the value we get from f x satisfies T. *)
 Definition regcol_compute_hint {Σ A B} (f : A → option B) (x : A) (T : B → iProp Σ) : iProp Σ :=
   ∃ y, ⌜f x = Some y⌝ ∗ T y.
 Arguments regcol_compute_hint : simpl never.
@@ -683,6 +676,7 @@ Definition FindInstrKind {Σ} `{!Arch} `{!islaG Σ} `{!threadG} (a : Z) (l : boo
 |}.
 Global Typeclasses Opaque FindInstrKind.
 
+(* Add the support to read/write field in struct reg. *)
 Inductive reg_mapsto_kind : Type :=
 | RKMapsTo (v : valu) | RKCol (regs : list (reg_kind * valu_shape)) | RKMapsToStruct (idx: nat) (v : valu) (fvs: list (sail_name * valu)).
 Definition FindRegMapsTo {Σ} `{!islaG Σ} `{!threadG} (r : string) := {|
@@ -736,9 +730,6 @@ Section instances.
   (* If there is no later in the goal (i.e. the second parameter to FindInstrKind is false),
      we should only find instr_pre with false in the context. Otherwise, we can find an
      arbitrary instr_pre. *)
-  (* Q-YIQUN: how to choose instr_pre and instr ? by priority? *)
-  (* YIQUN: we always request the continution holds with the return value *)
-  (* (the value we find in context). *)
   Lemma find_in_context_instr_kind_pre_false a T:
     (∃ P, instr_pre' false a P ∗ T (IKPre false P))
     ⊢ find_in_context (FindInstrKind a false) T.
@@ -1230,16 +1221,6 @@ Section instances.
   Lemma li_instr_pre l a P:
     (li_tactic (normalize_instr_addr a) (λ normPC,
      let newPC := Z_to_bv 64 normPC in
-     (* YIQUN: The find_in_context means that there is a value of type *)
-     (* instr_kind, which satisfies both the find func `FindInstrKind` *)
-     (* and the continuation. *)
-     (* 1. IKInstr None: the address has no trace and to be safe, we need *)
-     (* to make the the already-happened observation is right. see *)
-     (* instr_pre_intro_None. *)
-     (* 2. IKInstr Some; the address has the trace and to be safe, we *)
-     (* need to make sure wpasm t. See instr_pre_intro_Some. *)
-     (* 3. IKPre: we have the instr_pre in the same address, we only need *)
-     (* to prove the mono. *)
      find_in_context (FindInstrKind normPC l) (λ ik,
      match ik with
      | IKInstr (Some t) =>
@@ -1368,16 +1349,6 @@ Section instances.
   Qed.
 
   Lemma li_wp_assume_reg r v ann es :
-    (* YIQUN: the FindRegMapsTo find either a r↦v or all the registers. *)
-    (* The return value also need to satisfy the continuation. *)
-    (* 1. wp_assume_reg directly. *)
-    (* 2. we get the r↦v from the reg_col regs. *)
-    (* YIQUN: we can understand this transformation in this way:if the *)
-    (* head event is AssumeReg, the WPasm is equiv to the following two *)
-    (* cases depending on the registers we found. We can regard the find *)
-    (* function in find_in_context as a precondition. If we can find *)
-    (* something satisfying the find function, then the return value *)
-    (* can infer the goal if the return value satisfies a continuation. *)
     (find_in_context (FindRegMapsTo r) (λ rk,
       match rk with
       | RKMapsTo v' => (⌜v = v'⌝ ∗ (r ↦ᵣ v' -∗ WPasm es))
@@ -1633,7 +1604,6 @@ Section instances.
     - done.
   Qed.
 
-  (*TODO: read struct*)
   Lemma li_wpae_var_struct r f Φ ann :
     (find_in_context (FindStructRegMapsTo r f) (λ rk,
       match rk with
@@ -1776,7 +1746,6 @@ Definition entails_to_simplify_hyp {Σ} (n : N) {P Q : iProp Σ} (Hent : (P ⊢ 
   λ G, i2p (tac_entails_to_simplify_hyp P Q Hent G).
 
 (* TODO: upstream? *)
-(* Q-YIQUN: why do we bind things? What's the benefit? *)
 Ltac liLetBindHint :=
   idtac;
   match goal with
@@ -1806,14 +1775,7 @@ Definition TRACE_LET {A} (x : A) : A := x.
 Arguments TRACE_LET : simpl never.
 Notation "'HIDDEN'" := (TRACE_LET _) (only printing).
 
-(* YIQUN: clear the TRACE_LET in envs and then wrap the postcondition H *)
-(* with LET_IN. In case of WPasm, it aadd a new TRACE_LET refering to *)
-(* the tail trace. *)
-(* Q-YIQUN: learn the benefit of this simple wrapper LET_ID or TRACE_LET. *)
-(* The LET_IN wrap the postcondition and the TRACE_LET wrap the tail *)
-(* trace. It looks that we always try to warp the non-head things *)
-(* together. From the Notation, it hides the non-head things. Is it *)
-(* better for lithium to process automatically? *)
+
 Ltac liAIntroduceLetInGoal :=
   (* kill old unused TRACE_LET. This can happen e.g. because of subst_event unfolding TRACE_LET. *)
   try match goal with | H := TRACE_LET _ |- _ => clear H end;
@@ -1937,9 +1899,6 @@ Ltac liAOther :=
   end.
 
 Ltac liAStep :=
- (* YIQUN: liEnsureInvariant bind the envs in envs_entais. In this way, *)
- (* we can conveniently to infer the next from the envs instead of decomp *)
- (* the goal envs_entail every time. *)
  liEnsureInvariant;
  try liAIntroduceLetInGoal;
  first [

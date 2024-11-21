@@ -64,8 +64,6 @@ Global Instance spec_equiv : Equiv spec := λ P1 P2, ∀ κs, P1 κs ↔ P2 κs.
 
 Canonical Structure specO := list seq_label -d> PropO.
 
-(* YIQUN: provide a kind of combinator for spec. *)
-(* YIQUN: spec is a description of the seq_label trace. *)
 Definition snil : spec :=
   λ κs, κs = [].
 
@@ -75,12 +73,9 @@ Definition scons (l : seq_label) (P : spec) : spec :=
 Definition sapp (ls : list seq_label) (P : spec) : spec :=
   foldr scons P ls.
 
-(* YIQUN: There is a value which makes the spec satisfied. *)
 Definition sexists {A} (P : A → spec) : spec :=
   λ κs, ∃ a, P a κs.
 
-(* C is a prop not part of the spec but can decide the which spec *)
-(* to choose. *)
 Definition sif (C : Prop) (P1 : spec) (P2 : spec) : spec :=
   λ κs, (C ∧ P1 κs) ∨ (¬ C ∧ P2 κs).
 

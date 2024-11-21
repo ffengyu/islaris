@@ -1,5 +1,0 @@
-0000000000000000 <.text>:
-//@constraint: = ((_ extract 1 1) PC) 0b0
-   4:	04b50063          	beq	a0,a1,64
-//@constraint: = ((_ extract 1 1) PC) 0b0
-   8:	0400056f          	jal	a0,64
